@@ -153,10 +153,12 @@ class PersistenceManager:
         )
 
     async def delete_plugin_data(self, plugin_name: str, key: str = None) -> int:
-        query = "DELETE FROM plugin_data WHERE plugin_name = ?" + (
-            " AND key = ?" if key else ""
-        )
-        params = (plugin_name, key) if key else (plugin_name,)
+        if key:
+            query = "DELETE FROM plugin_data WHERE plugin_name = ? AND key = ?"
+            params = (plugin_name, key)
+        else:
+            query = "DELETE FROM plugin_data WHERE plugin_name = ?"
+            params = (plugin_name,)
         return await self._execute(query, params, "update")
 
     async def get_table_stats(self) -> dict[str, Any]:
@@ -167,7 +169,7 @@ class PersistenceManager:
             table_name = table_row[0]
             if not table_name.replace("_", "").isalnum():
                 continue
-            count_query = "SELECT COUNT(*) FROM " + table_name
+            count_query = f'SELECT COUNT(*) FROM "{table_name}"'
             count_result = await self._execute(count_query)
             size_query = "SELECT SUM(pgsize) FROM dbstat WHERE name = ?"
             size_result = await self._execute(size_query, (table_name,))
