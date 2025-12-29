@@ -4,16 +4,17 @@ from typing import Optional
 import openai
 from loguru import logger
 from openai import (
-    APIConnectionError,
-    APIError,
+    APIConnectionError as OpenAIConnectionError,
+    APIError as OpenAIError,
     APITimeoutError,
-    AuthenticationError,
+    AuthenticationError as OpenAIAuthenticationError,
     BadRequestError,
     RateLimitError,
     Timeout,
 )
 
 from .constants import API_MAX_RETRIES, API_TIMEOUT, REQUEST_TIMEOUT
+from .exceptions import APIConnectionError, AuthenticationError
 from .utils import retry_async
 
 __all__ = ("OpenAIAPI",)
@@ -49,8 +50,8 @@ class OpenAIAPI:
             RateLimitError,
             APITimeoutError,
             Timeout,
-            APIError,
-            APIConnectionError,
+            OpenAIError,
+            OpenAIConnectionError,
             OSError,
         ),
     )
@@ -67,9 +68,9 @@ class OpenAIAPI:
         except BadRequestError as e:
             logger.error(f"API 请求参数错误: {e}")
             raise ValueError() from e
-        except AuthenticationError as e:
+        except OpenAIAuthenticationError as e:
             logger.error(f"API 认证失败: {e}")
-            raise
+            raise AuthenticationError() from e
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"API 响应数据格式错误: {e}")
             raise ValueError() from e
