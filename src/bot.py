@@ -85,7 +85,7 @@ class MentionHandler:
             return
         try:
             logger.info(
-                f"收到 @{mention.username} 的提及: {self.bot._format_log_text(mention.text)}"
+                f"收到 @{mention.username} 的提及: {self.bot.format_log_text(mention.text)}"
             )
             if await self._try_plugin_response(mention, note):
                 return
@@ -146,14 +146,14 @@ class MentionHandler:
                         text=formatted, reply_id=mention.reply_target_id
                     )
                     logger.info(
-                        f"插件已回复 @{mention.username}: {self.bot._format_log_text(formatted)}"
+                        f"插件已回复 @{mention.username}: {self.bot.format_log_text(formatted)}"
                     )
                 return True
         return False
 
     async def _generate_ai_response(self, mention: MentionContext) -> None:
         reply = await self.bot.openai.generate_text(
-            mention.text, self.bot.system_prompt, **self.bot._ai_config
+            mention.text, self.bot.system_prompt, **self.bot.ai_config
         )
         logger.debug("生成提及回复成功")
         formatted = f"@{mention.username}\n{reply}"
@@ -161,7 +161,7 @@ class MentionHandler:
             text=formatted, reply_id=mention.reply_target_id
         )
         logger.info(
-            f"已回复 @{mention.username}: {self.bot._format_log_text(formatted)}"
+            f"已回复 @{mention.username}: {self.bot.format_log_text(formatted)}"
         )
 
 
@@ -197,7 +197,7 @@ class ChatHandler:
         if not (user_id and text):
             logger.debug(f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}")
             return
-        logger.info(f"收到 @{username} 的聊天: {self.bot._format_log_text(text)}")
+        logger.info(f"收到 @{username} 的聊天: {self.bot.format_log_text(text)}")
         if await self._try_plugin_response(message, user_id, username):
             return
         await self._generate_ai_response(user_id, username, text)
@@ -213,7 +213,7 @@ class ChatHandler:
                 if response:
                     await self.bot.misskey.send_message(user_id, response)
                     logger.info(
-                        f"插件已回复 @{username}: {self.bot._format_log_text(response)}"
+                        f"插件已回复 @{username}: {self.bot.format_log_text(response)}"
                     )
                 return True
         return False
@@ -225,10 +225,10 @@ class ChatHandler:
         history.append({"role": "user", "content": text})
         if not history or history[0].get("role") != "system":
             history.insert(0, {"role": "system", "content": self.bot.system_prompt})
-        reply = await self.bot.openai.generate_chat(history, **self.bot._ai_config)
+        reply = await self.bot.openai.generate_chat(history, **self.bot.ai_config)
         logger.debug("生成聊天回复成功")
         await self.bot.misskey.send_message(user_id, reply)
-        logger.info(f"已回复 @{username}: {self.bot._format_log_text(reply)}")
+        logger.info(f"已回复 @{username}: {self.bot.format_log_text(reply)}")
         history.append({"role": "assistant", "content": reply})
 
     async def _get_chat_history(
@@ -313,7 +313,7 @@ class AutoPostService:
                 )
                 await self.bot.misskey.create_note(content, visibility=visibility)
                 self.bot.runtime.post_count()
-                logger.info(f"自动发帖成功: {self.bot._format_log_text(content)}")
+                logger.info(f"自动发帖成功: {self.bot.format_log_text(content)}")
                 logger.info(f"今日发帖计数: {self.bot.runtime.posts_today}/{max_posts}")
                 return True
         return False
@@ -343,7 +343,7 @@ class AutoPostService:
         visibility = self.bot.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
         await self.bot.misskey.create_note(content, visibility=visibility)
         self.bot.runtime.post_count()
-        logger.info(f"自动发帖成功: {self.bot._format_log_text(content)}")
+        logger.info(f"自动发帖成功: {self.bot.format_log_text(content)}")
         logger.info(f"今日发帖计数: {self.bot.runtime.posts_today}/{max_posts}")
 
     async def _generate_post(
@@ -360,7 +360,7 @@ class AutoPostService:
         )
         full_prompt = f"[{timestamp_min}] {plugin_prompt}{prompt}"
         return await self.bot.openai.generate_text(
-            full_prompt, system_prompt, **self.bot._ai_config
+            full_prompt, system_prompt, **self.bot.ai_config
         )
 
 
@@ -487,10 +487,7 @@ class MisskeyBot:
         try:
             await self.plugin_manager.on_shutdown()
             await self.plugin_manager.cleanup_plugins()
-            if (
-                hasattr(self.scheduler, "_eventloop")
-                and self.scheduler._eventloop is not None
-            ):
+            if self.scheduler.running:
                 self.scheduler.shutdown(wait=False)
             await self.runtime.cleanup_tasks()
             await self.streaming.close()
@@ -503,7 +500,7 @@ class MisskeyBot:
         finally:
             logger.info("服务组件已停止")
 
-    def _format_log_text(self, text: str, max_length: int = 50) -> str:
+    def format_log_text(self, text: str, max_length: int = 50) -> str:
         return (
             "None"
             if not text
@@ -511,7 +508,7 @@ class MisskeyBot:
         )
 
     @property
-    def _ai_config(self) -> dict[str, Any]:
+    def ai_config(self) -> dict[str, Any]:
         return {
             "max_tokens": self.config.get(ConfigKeys.OPENAI_MAX_TOKENS),
             "temperature": self.config.get(ConfigKeys.OPENAI_TEMPERATURE),
