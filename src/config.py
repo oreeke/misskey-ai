@@ -23,7 +23,9 @@ class Config:
             raise ConfigurationError()
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                self.config = yaml.safe_load(f)
+                self.config = yaml.safe_load(f) or {}
+            if not isinstance(self.config, dict):
+                raise ConfigurationError("配置文件根节点必须为对象")
             logger.debug(f"已加载配置文件: {config_path}")
             self._override_from_env()
             self._validate_config()
@@ -121,6 +123,14 @@ class Config:
             logger.error(f"配置文件格式错误: {e}")
             return None
 
+    def get_required(self, key: str, desc: Optional[str] = None) -> Any:
+        value = self.get(key)
+        if value is None:
+            raise ConfigurationError(f"缺少必要配置项: {desc or key}")
+        if isinstance(value, str) and not value.strip():
+            raise ConfigurationError(f"缺少必要配置项: {desc or key}")
+        return value
+
     def _get_builtin_default(self, key: str) -> Any:
         builtin_defaults = {
             ConfigKeys.MISSKEY_INSTANCE_URL: None,
@@ -147,21 +157,71 @@ class Config:
 
     def _validate_config(self) -> None:
         self._validate_required_configs()
+        self._validate_types_and_ranges()
         self._validate_file_paths()
         logger.debug("配置验证完成")
 
     def _validate_required_configs(self) -> None:
-        required_configs = [
-            (ConfigKeys.MISSKEY_INSTANCE_URL, "Misskey 实例 URL"),
-            (ConfigKeys.MISSKEY_ACCESS_TOKEN, "Misskey 访问令牌"),
-            (ConfigKeys.OPENAI_API_KEY, "OpenAI API 密钥"),
-            (ConfigKeys.OPENAI_MODEL, "OpenAI 模型名称"),
-            (ConfigKeys.OPENAI_API_BASE, "OpenAI API 端点"),
-        ]
-        for config_key, desc in required_configs:
-            value = self.get(config_key)
-            if not value or (isinstance(value, str) and not value.strip()):
-                raise ConfigurationError(f"缺少必要配置项: {desc}")
+        self.get_required(ConfigKeys.MISSKEY_INSTANCE_URL, "Misskey 实例 URL")
+        self.get_required(ConfigKeys.MISSKEY_ACCESS_TOKEN, "Misskey 访问令牌")
+        self.get_required(ConfigKeys.OPENAI_API_KEY, "OpenAI API 密钥")
+
+    def _validate_types_and_ranges(self) -> None:
+        def require_type(key: str, types: tuple[type, ...], desc: str) -> Any:
+            value = self.get(key)
+            if value is None:
+                return None
+            if not isinstance(value, types):
+                raise ConfigurationError(f"配置项类型错误: {desc}")
+            return value
+
+        require_type(ConfigKeys.MISSKEY_INSTANCE_URL, (str,), "Misskey 实例 URL")
+        require_type(ConfigKeys.MISSKEY_ACCESS_TOKEN, (str,), "Misskey 访问令牌")
+        require_type(ConfigKeys.OPENAI_API_KEY, (str,), "OpenAI API 密钥")
+        require_type(ConfigKeys.OPENAI_MODEL, (str,), "OpenAI 模型名称")
+        require_type(ConfigKeys.OPENAI_API_BASE, (str,), "OpenAI API 端点")
+        require_type(ConfigKeys.BOT_AUTO_POST_ENABLED, (bool,), "自动发帖开关")
+        require_type(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED, (bool,), "提及响应开关")
+        require_type(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED, (bool,), "聊天响应开关")
+        require_type(ConfigKeys.DB_PATH, (str,), "数据库路径")
+        require_type(ConfigKeys.LOG_PATH, (str,), "日志路径")
+        require_type(ConfigKeys.LOG_LEVEL, (str,), "日志级别")
+
+        max_tokens = require_type(
+            ConfigKeys.OPENAI_MAX_TOKENS, (int,), "最大生成 token 数"
+        )
+        if max_tokens is not None and max_tokens <= 0:
+            raise ConfigurationError("最大生成 token 数必须大于 0")
+        temperature = require_type(
+            ConfigKeys.OPENAI_TEMPERATURE, (int, float), "温度参数"
+        )
+        if temperature is not None and not (0 <= float(temperature) <= 2):
+            raise ConfigurationError("温度参数必须在 0~2 之间")
+        interval = require_type(
+            ConfigKeys.BOT_AUTO_POST_INTERVAL, (int,), "发帖间隔（分钟）"
+        )
+        if interval is not None and interval <= 0:
+            raise ConfigurationError("发帖间隔必须大于 0")
+        max_per_day = require_type(
+            ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY, (int,), "每日最大发帖数量"
+        )
+        if max_per_day is not None and max_per_day < 0:
+            raise ConfigurationError("每日最大发帖数量不能小于 0")
+        chat_memory = require_type(
+            ConfigKeys.BOT_RESPONSE_CHAT_MEMORY, (int,), "聊天上下文记忆长度"
+        )
+        if chat_memory is not None and chat_memory < 0:
+            raise ConfigurationError("聊天上下文记忆长度不能小于 0")
+        visibility = require_type(
+            ConfigKeys.BOT_AUTO_POST_VISIBILITY, (str,), "发帖可见性"
+        )
+        if visibility is not None and visibility not in {
+            "public",
+            "home",
+            "followers",
+            "specified",
+        }:
+            raise ConfigurationError("发帖可见性必须是 public/home/followers/specified")
 
     def _validate_file_paths(self) -> None:
         paths = [

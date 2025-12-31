@@ -393,12 +393,12 @@ class MisskeyBot:
     def __init__(self, config: Config):
         self.config = config
         try:
-            instance_url = config.get(ConfigKeys.MISSKEY_INSTANCE_URL)
-            access_token = config.get(ConfigKeys.MISSKEY_ACCESS_TOKEN)
+            instance_url = config.get_required(ConfigKeys.MISSKEY_INSTANCE_URL)
+            access_token = config.get_required(ConfigKeys.MISSKEY_ACCESS_TOKEN)
             self.misskey = MisskeyAPI(instance_url, access_token)
             self.streaming = StreamingClient(instance_url, access_token)
             self.openai = OpenAIAPI(
-                config.get(ConfigKeys.OPENAI_API_KEY),
+                config.get_required(ConfigKeys.OPENAI_API_KEY),
                 config.get(ConfigKeys.OPENAI_MODEL),
                 config.get(ConfigKeys.OPENAI_API_BASE),
             )
