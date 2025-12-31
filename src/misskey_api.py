@@ -18,7 +18,7 @@ from .exceptions import (
     APIRateLimitError,
     AuthenticationError,
 )
-from .transport import ClientSession
+from .transport import ClientSession, TCPClient
 from .utils import retry_async
 
 __all__ = ("MisskeyAPI",)
@@ -28,7 +28,7 @@ class MisskeyAPI:
     def __init__(self, instance_url: str, access_token: str):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
-        self.transport = ClientSession
+        self.transport: TCPClient = ClientSession
 
     async def __aenter__(self):
         return self
@@ -42,7 +42,7 @@ class MisskeyAPI:
         logger.debug("Misskey API 客户端已关闭")
 
     @property
-    def session(self):
+    def session(self) -> aiohttp.ClientSession:
         return self.transport.session
 
     def _handle_response_status(self, response, endpoint: str):
@@ -86,7 +86,8 @@ class MisskeyAPI:
         if data:
             payload.update(data)
         try:
-            async with self.session.post(url, json=payload) as response:
+            session = self.session
+            async with session.post(url, json=payload) as response:
                 return await self._process_response(response, endpoint)
         except (
             aiohttp.ClientError,

@@ -20,7 +20,7 @@ class WeatherPlugin(PluginBase):
         self.enabled = self.enabled and bool(self.api_key)
         self.base_url = "https://api.openweathermap.org/data/2.5/weather"
         self.geocoding_url = "https://api.openweathermap.org/geo/1.0/direct"
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
     async def initialize(self) -> bool:
         if not self.api_key:
@@ -94,7 +94,8 @@ class WeatherPlugin(PluginBase):
 
     async def _get_weather(self, city: str) -> Optional[str]:
         try:
-            if not self.session or self.session.closed:
+            session = self.session
+            if not session or session.closed:
                 return None
             coordinates = await self._get_coordinates(city)
             if not coordinates:
@@ -107,7 +108,7 @@ class WeatherPlugin(PluginBase):
                 "units": "metric",
                 "lang": "zh_cn",
             }
-            async with self.session.get(self.base_url, params=params) as response:
+            async with session.get(self.base_url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
                     return self._format_weather_info_v25(data, display_name)
@@ -119,10 +120,11 @@ class WeatherPlugin(PluginBase):
 
     async def _get_coordinates(self, city: str) -> Optional[tuple]:
         try:
-            if not self.session or self.session.closed:
+            session = self.session
+            if not session or session.closed:
                 return None
             params = {"q": city, "limit": 1, "appid": self.api_key}
-            async with self.session.get(self.geocoding_url, params=params) as response:
+            async with session.get(self.geocoding_url, params=params) as response:
                 if response.status != 200:
                     logger.warning(f"Geocoding API 请求失败，状态码: {response.status}")
                     return None
