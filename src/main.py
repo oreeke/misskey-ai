@@ -35,18 +35,8 @@ class BotRunner:
             await self.shutdown_event.wait()
         except asyncio.CancelledError:
             pass
-        except (
-            ConfigurationError,
-            APIConnectionError,
-            AuthenticationError,
-            OSError,
-            ValueError,
-        ) as e:
-            logger.error(f"启动过程中发生错误: {e}")
-            raise
         finally:
             await self.shutdown()
-            logger.info("再见~")
 
     async def _setup_monitoring_and_signals(self) -> None:
         signals = (
@@ -81,15 +71,18 @@ class BotRunner:
         logger.info("机器人已关闭")
 
 
-def main() -> None:
+def main() -> int:
     runner = BotRunner()
     try:
         asyncio.run(runner.run())
+        logger.info("再见~")
+        return 0
     except KeyboardInterrupt:
         try:
             asyncio.run(runner.shutdown())
-        except (OSError, ValueError, TypeError) as e:
-            print(f"关闭时出错: {e}")
+        except (OSError, ValueError, TypeError):
+            logger.exception("关闭时出错")
+        return 130
     except (
         OSError,
         ValueError,
@@ -101,12 +94,22 @@ def main() -> None:
         APIConnectionError,
         AuthenticationError,
     ) as e:
-        print(f"启动时出错: {e}")
+        if isinstance(e, (ConfigurationError, AuthenticationError, APIConnectionError)):
+            logger.error(f"启动时出错: {e}")
+        else:
+            logger.exception("启动时发生未处理异常")
         try:
             asyncio.run(runner.shutdown())
-        except (OSError, ValueError, TypeError) as shutdown_error:
-            print(f"关闭时出错: {shutdown_error}")
+        except (OSError, ValueError, TypeError):
+            logger.exception("关闭时出错")
+        if isinstance(e, ConfigurationError):
+            return 2
+        if isinstance(e, AuthenticationError):
+            return 3
+        if isinstance(e, APIConnectionError):
+            return 4
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
