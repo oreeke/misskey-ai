@@ -1,4 +1,4 @@
-# Command 插件配置文件
+# Cmd 插件配置文件
 
 enabled: true                     # 是否启用插件
 priority: 999                     # 插件优先级（数字越大优先级越高）
@@ -7,3 +7,4 @@ allowed_users:                    # 允许使用命令的用户列表
   - "user1"                       # 用户 ID 或用户名
   - "user2"
   - "admin"
+

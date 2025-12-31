@@ -1,25 +1,151 @@
+import asyncio
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 from loguru import logger
 
 from . import utils
 from .config import Config
-from .plugin_base import PluginBase
+from .utils import extract_user_id, extract_username
 
-__all__ = ("PluginManager",)
+__all__ = ("PluginBase", "PluginContext", "PluginManager")
+
+
+class PluginContext:
+    def __init__(self, name: str, config: dict[str, Any], **context_objects):
+        self.name = name
+        self.config = config
+        for key, value in context_objects.items():
+            setattr(self, key, value)
+
+
+class PluginBase:
+    def __init__(
+        self, config_or_context, utils_provider: Optional[dict[str, Callable]] = None
+    ):
+        if isinstance(config_or_context, PluginContext):
+            context = config_or_context
+            self.config = context.config
+            self.name = context.name
+            for attr_name in dir(context):
+                if not attr_name.startswith("_") and attr_name not in (
+                    "name",
+                    "config",
+                ):
+                    setattr(self, attr_name, getattr(context, attr_name))
+            if not hasattr(self, "utils_provider"):
+                self.utils_provider = {}
+            self._utils = getattr(self, "utils_provider", {})
+        else:
+            self.config = config_or_context
+            self.name = self.__class__.__name__
+            self._utils = utils_provider or {}
+        self.enabled = self.config.get("enabled", False)
+        self.priority = self.config.get("priority", 0)
+        self._initialized = False
+        self._resources_to_cleanup = []
+
+    async def __aenter__(self):
+        result = await self.initialize()
+        if result:
+            self._initialized = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.cleanup()
+        if self._resources_to_cleanup:
+            logger.warning(
+                f"插件 {self.name} 存在未清理的资源: {len(self._resources_to_cleanup)} 项"
+            )
+        self._initialized = False
+        return False
+
+    async def initialize(self) -> bool:
+        return True
+
+    async def cleanup(self) -> None:
+        await self._cleanup_registered_resources()
+
+    async def on_startup(self) -> None:
+        pass
+
+    async def on_mention(
+        self, _mention_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        return None
+
+    async def on_message(
+        self, _message_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        return None
+
+    async def on_reaction(
+        self, _reaction_data: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        return None
+
+    async def on_follow(self, _follow_data: dict[str, Any]) -> Optional[dict[str, Any]]:
+        return None
+
+    async def on_auto_post(self) -> Optional[dict[str, Any]]:
+        return None
+
+    async def on_shutdown(self) -> None:
+        pass
+
+    def get_info(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "enabled": self.enabled,
+            "priority": self.priority,
+            "description": getattr(self, "description", "No description available"),
+        }
+
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = enabled
+        logger.info(f"插件 {self.name} {'启用' if enabled else '禁用'}")
+
+    def _extract_username(self, data: dict[str, Any]) -> str:
+        return extract_username(data)
+
+    def _extract_user_id(self, data: dict[str, Any]) -> Optional[str]:
+        return extract_user_id(data)
+
+    def _log_plugin_action(self, action: str, details: str = "") -> None:
+        logger.info(f"{self.name} 插件{action}{': ' + details if details else ''}")
+
+    def _validate_plugin_response(self, response: Any) -> bool:
+        if not isinstance(response, dict):
+            return False
+        required_types = {"handled": bool, "plugin_name": str, "response": str}
+        return all(
+            isinstance(response.get(k), t)
+            for k, t in required_types.items()
+            if k in response
+        )
+
+    def _register_resource(self, resource: Any, cleanup_method: str = "close") -> None:
+        self._resources_to_cleanup.append((resource, cleanup_method))
+
+    async def _cleanup_registered_resources(self) -> None:
+        for resource, cleanup_method in self._resources_to_cleanup:
+            try:
+                if hasattr(resource, cleanup_method):
+                    method = getattr(resource, cleanup_method)
+                    if asyncio.iscoroutinefunction(method):
+                        await method()
+                    else:
+                        method()
+            except (AttributeError, TypeError, OSError) as e:
+                logger.error(f"插件 {self.name} 清理资源失败: {e}")
+        self._resources_to_cleanup.clear()
 
 
 class PluginManager:
-    def __init__(
-        self,
-        config: Config,
-        plugins_dir: str = "plugins",
-        persistence=None,
-    ):
+    def __init__(self, config: Config, plugins_dir: str = "plugins", persistence=None):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: dict[str, PluginBase] = {}
@@ -119,8 +245,6 @@ class PluginManager:
         return None
 
     def _create_plugin_instance(self, plugin_class, plugin_name, plugin_config):
-        from .plugin_base import PluginContext
-
         utils_provider = {
             "extract_username": utils.extract_username,
             "extract_user_id": utils.extract_user_id,

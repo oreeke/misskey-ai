@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 from loguru import logger
 
-from src.plugin_base import PluginBase
+from src.plugin import PluginBase
 
 
 class TopicsPlugin(PluginBase):

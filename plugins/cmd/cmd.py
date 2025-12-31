@@ -3,11 +3,11 @@ from typing import Any, Optional
 import aiosqlite
 from loguru import logger
 
-from src.plugin_base import PluginBase
+from src.plugin import PluginBase
 from src.utils import get_memory_usage, get_system_info, health_check
 
 
-class CommandPlugin(PluginBase):
+class CmdPlugin(PluginBase):
     description = "命令插件，在聊天中使用 ^ 开头的命令管理机器人"
 
     def __init__(self, context):
@@ -21,18 +21,9 @@ class CommandPlugin(PluginBase):
             self.commands = {
                 "help": {"description": "帮助信息", "aliases": ["帮助"]},
                 "status": {"description": "机器人状态", "aliases": ["状态"]},
-                "sysinfo": {
-                    "description": "系统信息",
-                    "aliases": ["系统"],
-                },
-                "memory": {
-                    "description": "内存使用情况",
-                    "aliases": ["内存"],
-                },
-                "plugins": {
-                    "description": "插件列表",
-                    "aliases": ["插件"],
-                },
+                "sysinfo": {"description": "系统信息", "aliases": ["系统"]},
+                "memory": {"description": "内存使用情况", "aliases": ["内存"]},
+                "plugins": {"description": "插件列表", "aliases": ["插件"]},
                 "enable": {
                     "description": "启用插件 (用法: enable <插件名>)",
                     "aliases": ["启用"],
@@ -41,10 +32,7 @@ class CommandPlugin(PluginBase):
                     "description": "禁用插件 (用法: disable <插件名>)",
                     "aliases": ["禁用"],
                 },
-                "dbstats": {
-                    "description": "数据库统计",
-                    "aliases": ["数据库"],
-                },
+                "dbstats": {"description": "数据库统计", "aliases": ["数据库"]},
                 "dbclear": {
                     "description": "清理插件数据 (用法: dbclear <插件名> [键名])",
                     "aliases": ["清理"],

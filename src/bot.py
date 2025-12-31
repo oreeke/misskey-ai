@@ -22,7 +22,7 @@ from .exceptions import (
 from .misskey_api import MisskeyAPI
 from .openai_api import OpenAIAPI
 from .persistence import PersistenceManager
-from .plugin_manager import PluginManager
+from .plugin import PluginManager
 from .runtime import BotRuntime
 from .streaming import StreamingClient
 from .transport import ClientSession

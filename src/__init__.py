@@ -33,9 +33,9 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "ChannelType": (".streaming", "ChannelType"),
     "PersistenceManager": (".persistence", "PersistenceManager"),
     "ConnectionPool": (".persistence", "ConnectionPool"),
-    "PluginBase": (".plugin_base", "PluginBase"),
-    "PluginContext": (".plugin_base", "PluginContext"),
-    "PluginManager": (".plugin_manager", "PluginManager"),
+    "PluginBase": (".plugin", "PluginBase"),
+    "PluginContext": (".plugin", "PluginContext"),
+    "PluginManager": (".plugin", "PluginManager"),
     "TCPClient": (".transport", "TCPClient"),
     "ClientSession": (".transport", "ClientSession"),
 }
@@ -49,9 +49,9 @@ if TYPE_CHECKING:
     from .openai_api import OpenAIAPI as OpenAIAPI
     from .persistence import ConnectionPool as ConnectionPool
     from .persistence import PersistenceManager as PersistenceManager
-    from .plugin_base import PluginBase as PluginBase
-    from .plugin_base import PluginContext as PluginContext
-    from .plugin_manager import PluginManager as PluginManager
+    from .plugin import PluginBase as PluginBase
+    from .plugin import PluginContext as PluginContext
+    from .plugin import PluginManager as PluginManager
     from .runtime import BotRuntime as BotRuntime
     from .streaming import ChannelType as ChannelType
     from .streaming import StreamingClient as StreamingClient
