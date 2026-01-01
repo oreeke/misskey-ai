@@ -16,13 +16,13 @@
 
 ## 简介
 
-> \[!TIP]
->
-> 切换模型仅需修改三个配置项：`api_key`，`model`，`api_base`
-
 ### 主要功能
 
-- **使用 OpenAI SDK 兼容性模型生成内容**
+- 根据已设置的周期和可见性自动发帖
+- 实时响应用户提及（@）和聊天
+- 自定义系统提示（性格）和发帖提示
+- 使用多模态模型时，支持图片识别（需开启 Vision 插件）
+- 配合 OpenAI SDK 兼容性模型生成内容
   - [OpenAI](https://platform.openai.com/docs/overview)
   - [DeepSeek](https://api-docs.deepseek.com/)（默认）
   - [Grok](https://docs.x.ai/docs/guides/migration)
@@ -30,11 +30,7 @@
   - [Claude](https://docs.anthropic.com/en/api/openai-sdk)
   - [Ollama](https://ollama.com/blog/openai-compatibility)
   - ...
-- **自定义系统提示（性格）和发帖提示**
-- **根据已设置的周期和可见性自动发帖**
-- **实时响应用户提及（@）和聊天**
-- **使用多模态模型时，支持图片识别（需开启 Vision 插件）**
-- **利用插件系统添加丰富的额外功能**
+- 利用插件系统添加丰富的额外功能
   - [Example](./plugins/example)
   - [Cmd](./plugins/cmd)
   - [Topics](./plugins/topics)
@@ -98,6 +94,10 @@ log:
 pip install -r requirements.txt
 python run.py
 ```
+
+> \[!TIP]
+>
+> 切换模型仅需修改三个字段：`api_key`，`model`，`api_base`
 
 > 后台运行（可选）
 ```bash
