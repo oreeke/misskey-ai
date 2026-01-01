@@ -95,11 +95,6 @@ pip install -r requirements.txt
 python run.py
 ```
 
-> \[!TIP]
->
-> 切换模型仅需修改三个字段：`api_key`，`model`，`api_base`<br>
-> 相同 `api_base` 下的模型可通过 [Cmd](./plugins/cmd) 命令实时切换
-
 > 后台运行（可选）
 ```bash
 nohup python run.py & tail -f logs/misskey_ai.log
@@ -163,6 +158,11 @@ LOG_LEVEL=INFO                                             # 日志级别 (DEBUG
 docker compose build
 docker compose up -d
 ```
+
+> [!TIP]
+>
+> 切换模型仅需修改：`api_key`，`model`，`api_base`<br>
+> 相同 `api_base` 下的模型可通过 [Cmd](./plugins/cmd) 实时切换
 
 > [!NOTE]
 >
