@@ -145,11 +145,18 @@ class PluginBase:
 
 
 class PluginManager:
-    def __init__(self, config: Config, plugins_dir: str = "plugins", persistence=None):
+    def __init__(
+        self,
+        config: Config,
+        plugins_dir: str = "plugins",
+        persistence=None,
+        context_objects: Optional[dict[str, Any]] = None,
+    ):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: dict[str, PluginBase] = {}
         self.persistence = persistence
+        self.context_objects = context_objects or {}
 
     async def __aenter__(self):
         return self
@@ -249,13 +256,18 @@ class PluginManager:
             "extract_username": utils.extract_username,
             "extract_user_id": utils.extract_user_id,
         }
+        context_objects = {
+            "persistence_manager": self.persistence,
+            "utils_provider": utils_provider,
+            "plugin_manager": self,
+            "global_config": self.config,
+        }
+        for k, v in self.context_objects.items():
+            context_objects.setdefault(k, v)
         context = PluginContext(
             name=plugin_name.capitalize(),
             config=plugin_config,
-            persistence_manager=self.persistence,
-            utils_provider=utils_provider,
-            plugin_manager=self,
-            global_config=self.config,
+            **context_objects,
         )
         return plugin_class(context)
 

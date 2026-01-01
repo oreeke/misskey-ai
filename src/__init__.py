@@ -9,6 +9,8 @@ __all__ = [
     "Config",
     "ConfigKeys",
     "MisskeyAPI",
+    "MisskeyDrive",
+    "DriveIO",
     "OpenAIAPI",
     "StreamingClient",
     "ChannelType",
@@ -28,6 +30,8 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "Config": (".config", "Config"),
     "ConfigKeys": (".constants", "ConfigKeys"),
     "MisskeyAPI": (".misskey_api", "MisskeyAPI"),
+    "MisskeyDrive": (".misskey_api", "MisskeyDrive"),
+    "DriveIO": (".misskey_api", "DriveIO"),
     "OpenAIAPI": (".openai_api", "OpenAIAPI"),
     "StreamingClient": (".streaming", "StreamingClient"),
     "ChannelType": (".streaming", "ChannelType"),
@@ -45,7 +49,7 @@ if TYPE_CHECKING:
     from .config import Config
     from .constants import ConfigKeys
     from .main import BotRunner
-    from .misskey_api import MisskeyAPI
+    from .misskey_api import DriveIO, MisskeyAPI, MisskeyDrive
     from .openai_api import OpenAIAPI
     from .persistence import ConnectionPool, PersistenceManager
     from .plugin import PluginBase, PluginContext, PluginManager

@@ -407,7 +407,11 @@ class MisskeyBot:
             logger.error(f"初始化失败: {e}")
             raise ConfigurationError() from e
         self.persistence = PersistenceManager(config.get(ConfigKeys.DB_PATH))
-        self.plugin_manager = PluginManager(config, persistence=self.persistence)
+        self.plugin_manager = PluginManager(
+            config,
+            persistence=self.persistence,
+            context_objects={"misskey": self.misskey, "drive": self.misskey.drive},
+        )
         self.runtime = BotRuntime(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.bot_user_id = None

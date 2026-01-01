@@ -1,5 +1,7 @@
 import json
-from typing import Any, Optional
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, Optional, Protocol
 
 import aiohttp
 from loguru import logger
@@ -8,6 +10,7 @@ from .constants import (
     API_MAX_RETRIES,
     HTTP_BAD_REQUEST,
     HTTP_FORBIDDEN,
+    HTTP_NO_CONTENT,
     HTTP_OK,
     HTTP_TOO_MANY_REQUESTS,
     HTTP_UNAUTHORIZED,
@@ -21,7 +24,105 @@ from .exceptions import (
 from .transport import ClientSession, TCPClient
 from .utils import retry_async
 
-__all__ = ("MisskeyAPI",)
+__all__ = ("MisskeyAPI", "MisskeyDrive", "DriveIO")
+
+
+class DriveIO(Protocol):
+    async def usage(self) -> dict[str, Any]: ...
+    async def list_files(
+        self,
+        *,
+        limit: int = 10,
+        since_id: Optional[str] = None,
+        until_id: Optional[str] = None,
+        since_date: Optional[int] = None,
+        until_date: Optional[int] = None,
+        folder_id: Optional[str] = None,
+        type: Optional[str] = None,
+        sort: Optional[str] = None,
+    ) -> list[dict[str, Any]]: ...
+    async def show_file(self, file_id: str) -> dict[str, Any]: ...
+    async def find_files(
+        self, name: str, *, folder_id: Optional[str] = None
+    ) -> list[dict[str, Any]]: ...
+    async def upload_bytes(
+        self,
+        data: bytes,
+        *,
+        name: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: bool = False,
+        force: bool = False,
+        content_type: Optional[str] = None,
+    ) -> dict[str, Any]: ...
+    async def upload_path(
+        self,
+        path: str | Path,
+        *,
+        name: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: bool = False,
+        force: bool = False,
+        content_type: Optional[str] = None,
+    ) -> dict[str, Any]: ...
+    async def upload_from_url(
+        self,
+        url: str,
+        *,
+        folder_id: Optional[str] = None,
+        name: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: bool = False,
+        force: bool = False,
+    ) -> dict[str, Any]: ...
+    async def delete_file(self, file_id: str) -> dict[str, Any]: ...
+    async def update_file(
+        self,
+        file_id: str,
+        *,
+        name: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: Optional[bool] = None,
+    ) -> dict[str, Any]: ...
+    async def download_bytes(
+        self, file_id: str, *, thumbnail: bool = False, max_bytes: Optional[int] = None
+    ) -> bytes: ...
+    async def download_to_path(
+        self,
+        file_id: str,
+        path: str | Path,
+        *,
+        thumbnail: bool = False,
+        chunk_size: int = 1024 * 1024,
+    ) -> Path: ...
+    async def list_folders(
+        self,
+        *,
+        limit: int = 10,
+        since_id: Optional[str] = None,
+        until_id: Optional[str] = None,
+        since_date: Optional[int] = None,
+        until_date: Optional[int] = None,
+        folder_id: Optional[str] = None,
+    ) -> list[dict[str, Any]]: ...
+    async def create_folder(
+        self, name: str, *, parent_id: Optional[str] = None
+    ) -> dict[str, Any]: ...
+    async def find_folders(
+        self, name: str, *, parent_id: Optional[str] = None
+    ) -> list[dict[str, Any]]: ...
+    async def show_folder(self, folder_id: str) -> dict[str, Any]: ...
+    async def update_folder(
+        self,
+        folder_id: str,
+        *,
+        name: Optional[str] = None,
+        parent_id: Optional[str] = None,
+    ) -> dict[str, Any]: ...
+    async def delete_folder(self, folder_id: str) -> dict[str, Any]: ...
 
 
 class MisskeyAPI:
@@ -29,6 +130,7 @@ class MisskeyAPI:
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
         self.transport: TCPClient = ClientSession
+        self.drive: MisskeyDrive = MisskeyDrive(self)
 
     async def __aenter__(self):
         return self
@@ -61,13 +163,18 @@ class MisskeyAPI:
             raise APIRateLimitError()
 
     async def _process_response(self, response, endpoint: str):
-        if response.status == HTTP_OK:
+        if response.status in (HTTP_OK, HTTP_NO_CONTENT):
+            if response.status == HTTP_NO_CONTENT:
+                logger.debug(f"Misskey API 请求成功: {endpoint}")
+                return {}
             try:
                 result = await response.json()
                 logger.debug(f"Misskey API 请求成功: {endpoint}")
                 return result
-            except json.JSONDecodeError as e:
-                logger.error(f"响应不是有效的 JSON 格式: {e}")
+            except (json.JSONDecodeError, aiohttp.ContentTypeError):
+                if not (await response.read()):
+                    logger.debug(f"Misskey API 请求成功: {endpoint}")
+                    return {}
                 raise APIConnectionError()
         self._handle_response_status(response, endpoint)
         error_text = await response.text()
@@ -95,6 +202,33 @@ class MisskeyAPI:
         ) as e:
             logger.error(f"HTTP 请求错误: {e}")
             raise APIConnectionError() from e
+
+    @retry_async(
+        max_retries=API_MAX_RETRIES,
+        retryable_exceptions=(APIConnectionError, APIRateLimitError),
+    )
+    async def _make_multipart_request(
+        self,
+        endpoint: str,
+        build_form: Callable[[], tuple[aiohttp.FormData, list[Any]]],
+    ) -> dict[str, Any]:
+        url = f"{self.instance_url}/api/{endpoint}"
+        resources: list[Any] = []
+        try:
+            form, resources = build_form()
+            async with self.session.post(url, data=form) as response:
+                return await self._process_response(response, endpoint)
+        except (aiohttp.ClientError, json.JSONDecodeError) as e:
+            logger.error(f"HTTP 请求错误: {e}")
+            raise APIConnectionError() from e
+        finally:
+            for resource in resources:
+                try:
+                    close = getattr(resource, "close", None)
+                    if callable(close):
+                        close()
+                except (OSError, AttributeError):
+                    pass
 
     def _determine_reply_visibility(
         self, original_visibility: str, visibility: Optional[str]
@@ -187,3 +321,291 @@ class MisskeyAPI:
         if since_id:
             data["sinceId"] = since_id
         return await self._make_request("chat/messages/user-timeline", data)
+
+
+class MisskeyDrive:
+    def __init__(self, api: MisskeyAPI):
+        self._api = api
+
+    async def usage(self) -> dict[str, Any]:
+        return await self._api._make_request("drive")
+
+    async def list_files(
+        self,
+        *,
+        limit: int = 10,
+        since_id: Optional[str] = None,
+        until_id: Optional[str] = None,
+        since_date: Optional[int] = None,
+        until_date: Optional[int] = None,
+        folder_id: Optional[str] = None,
+        type: Optional[str] = None,
+        sort: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        data: dict[str, Any] = {"limit": limit}
+        if since_id:
+            data["sinceId"] = since_id
+        if until_id:
+            data["untilId"] = until_id
+        if since_date is not None:
+            data["sinceDate"] = since_date
+        if until_date is not None:
+            data["untilDate"] = until_date
+        if folder_id is not None:
+            data["folderId"] = folder_id
+        if type is not None:
+            data["type"] = type
+        if sort is not None:
+            data["sort"] = sort
+        return await self._api._make_request("drive/files", data)
+
+    async def show_file(self, file_id: str) -> dict[str, Any]:
+        return await self._api._make_request("drive/files/show", {"fileId": file_id})
+
+    async def find_files(
+        self, name: str, *, folder_id: Optional[str] = None
+    ) -> list[dict[str, Any]]:
+        data: dict[str, Any] = {"name": name}
+        if folder_id is not None:
+            data["folderId"] = folder_id
+        return await self._api._make_request("drive/files/find", data)
+
+    async def delete_file(self, file_id: str) -> dict[str, Any]:
+        return await self._api._make_request("drive/files/delete", {"fileId": file_id})
+
+    async def update_file(
+        self,
+        file_id: str,
+        *,
+        name: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: Optional[bool] = None,
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {"fileId": file_id}
+        if name is not None:
+            data["name"] = name
+        if folder_id is not None:
+            data["folderId"] = folder_id
+        if comment is not None:
+            data["comment"] = comment
+        if is_sensitive is not None:
+            data["isSensitive"] = is_sensitive
+        return await self._api._make_request("drive/files/update", data)
+
+    async def upload_from_url(
+        self,
+        url: str,
+        *,
+        folder_id: Optional[str] = None,
+        name: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: bool = False,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {"url": url}
+        if folder_id is not None:
+            data["folderId"] = folder_id
+        if name is not None:
+            data["name"] = name
+        if comment is not None:
+            data["comment"] = comment
+        if is_sensitive:
+            data["isSensitive"] = True
+        if force:
+            data["force"] = True
+        return await self._api._make_request("drive/files/upload-from-url", data)
+
+    async def upload_bytes(
+        self,
+        data: bytes,
+        *,
+        name: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: bool = False,
+        force: bool = False,
+        content_type: Optional[str] = None,
+    ) -> dict[str, Any]:
+        filename = name or "file"
+
+        def build():
+            form = aiohttp.FormData()
+            form.add_field("i", self._api.access_token)
+            if folder_id is not None:
+                form.add_field("folderId", folder_id)
+            if name is not None:
+                form.add_field("name", name)
+            if comment is not None:
+                form.add_field("comment", comment)
+            if is_sensitive:
+                form.add_field("isSensitive", "true")
+            if force:
+                form.add_field("force", "true")
+            form.add_field(
+                "file",
+                data,
+                filename=filename,
+                content_type=content_type or "application/octet-stream",
+            )
+            return form, []
+
+        return await self._api._make_multipart_request("drive/files/create", build)
+
+    async def upload_path(
+        self,
+        path: str | Path,
+        *,
+        name: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        comment: Optional[str] = None,
+        is_sensitive: bool = False,
+        force: bool = False,
+        content_type: Optional[str] = None,
+    ) -> dict[str, Any]:
+        file_path = Path(path)
+        if not file_path.is_file():
+            raise ValueError(f"文件不存在: {file_path}")
+        filename = name or file_path.name
+
+        def build():
+            f = file_path.open("rb")
+            form = aiohttp.FormData()
+            form.add_field("i", self._api.access_token)
+            if folder_id is not None:
+                form.add_field("folderId", folder_id)
+            if name is not None:
+                form.add_field("name", name)
+            if comment is not None:
+                form.add_field("comment", comment)
+            if is_sensitive:
+                form.add_field("isSensitive", "true")
+            if force:
+                form.add_field("force", "true")
+            form.add_field(
+                "file",
+                f,
+                filename=filename,
+                content_type=content_type or "application/octet-stream",
+            )
+            return form, [f]
+
+        return await self._api._make_multipart_request("drive/files/create", build)
+
+    async def _fetch_bytes(self, url: str, *, max_bytes: Optional[int] = None) -> bytes:
+        try:
+            async with self._api.session.get(url) as response:
+                if response.status != HTTP_OK:
+                    self._api._handle_response_status(response, "drive/files/download")
+                    raise APIConnectionError()
+                if max_bytes is None:
+                    return await response.read()
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.content.iter_chunked(65536):
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValueError("文件大小超过限制")
+                    chunks.append(chunk)
+                return b"".join(chunks)
+        except (aiohttp.ClientError, OSError) as e:
+            raise APIConnectionError() from e
+
+    async def download_bytes(
+        self, file_id: str, *, thumbnail: bool = False, max_bytes: Optional[int] = None
+    ) -> bytes:
+        info = await self.show_file(file_id)
+        url = info.get("thumbnailUrl") if thumbnail else info.get("url")
+        if not url:
+            raise APIConnectionError()
+        return await self._fetch_bytes(url, max_bytes=max_bytes)
+
+    async def download_to_path(
+        self,
+        file_id: str,
+        path: str | Path,
+        *,
+        thumbnail: bool = False,
+        chunk_size: int = 1024 * 1024,
+    ) -> Path:
+        info = await self.show_file(file_id)
+        url = info.get("thumbnailUrl") if thumbnail else info.get("url")
+        if not url:
+            raise APIConnectionError()
+        dest = Path(path)
+        if dest.parent and not dest.parent.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            async with self._api.session.get(url) as response:
+                if response.status != HTTP_OK:
+                    self._api._handle_response_status(response, "drive/files/download")
+                    raise APIConnectionError()
+                with dest.open("wb") as f:
+                    async for chunk in response.content.iter_chunked(chunk_size):
+                        f.write(chunk)
+        except (aiohttp.ClientError, OSError) as e:
+            raise APIConnectionError() from e
+        return dest
+
+    async def list_folders(
+        self,
+        *,
+        limit: int = 10,
+        since_id: Optional[str] = None,
+        until_id: Optional[str] = None,
+        since_date: Optional[int] = None,
+        until_date: Optional[int] = None,
+        folder_id: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        data: dict[str, Any] = {"limit": limit}
+        if since_id:
+            data["sinceId"] = since_id
+        if until_id:
+            data["untilId"] = until_id
+        if since_date is not None:
+            data["sinceDate"] = since_date
+        if until_date is not None:
+            data["untilDate"] = until_date
+        if folder_id is not None:
+            data["folderId"] = folder_id
+        return await self._api._make_request("drive/folders", data)
+
+    async def create_folder(
+        self, name: str, *, parent_id: Optional[str] = None
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {"name": name}
+        if parent_id is not None:
+            data["parentId"] = parent_id
+        return await self._api._make_request("drive/folders/create", data)
+
+    async def find_folders(
+        self, name: str, *, parent_id: Optional[str] = None
+    ) -> list[dict[str, Any]]:
+        data: dict[str, Any] = {"name": name}
+        if parent_id is not None:
+            data["parentId"] = parent_id
+        return await self._api._make_request("drive/folders/find", data)
+
+    async def show_folder(self, folder_id: str) -> dict[str, Any]:
+        return await self._api._make_request(
+            "drive/folders/show", {"folderId": folder_id}
+        )
+
+    async def update_folder(
+        self,
+        folder_id: str,
+        *,
+        name: Optional[str] = None,
+        parent_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        data: dict[str, Any] = {"folderId": folder_id}
+        if name is not None:
+            data["name"] = name
+        if parent_id is not None:
+            data["parentId"] = parent_id
+        return await self._api._make_request("drive/folders/update", data)
+
+    async def delete_folder(self, folder_id: str) -> dict[str, Any]:
+        return await self._api._make_request(
+            "drive/folders/delete", {"folderId": folder_id}
+        )
