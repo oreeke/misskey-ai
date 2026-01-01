@@ -7,7 +7,7 @@ from src.plugin import PluginBase
 
 
 class ExamplePlugin(PluginBase):
-    description = "示例插件，展示插件系统的规范写法与常见注意点"
+    description = "示例插件，插件系统的规范写法与常见注意点"
 
     MENTION_PATTERN = re.compile(r"@\w+\s*")
 
