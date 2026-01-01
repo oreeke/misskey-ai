@@ -18,20 +18,24 @@
 
 ### 主要功能
 
-- 使用 OpenAI SDK 兼容性模型生成内容
+- **使用 OpenAI SDK 兼容性模型生成内容**
+  - 切换模型仅需修改三个配置项：`api_key`，`model`，`api_base`
   - [OpenAI](https://platform.openai.com/docs/overview)
   - [DeepSeek](https://api-docs.deepseek.com/)（默认）
+  - [Grok](https://docs.x.ai/docs/guides/migration)
   - [Gemini](https://ai.google.dev/gemini-api/docs/openai)
   - [Claude](https://docs.anthropic.com/en/api/openai-sdk)
   - [Ollama](https://ollama.com/blog/openai-compatibility)
   - ...
-- 自定义系统提示（性格）和发帖提示
-- 根据已设置的周期和可见性自动发帖
-- 实时响应用户提及（@）和聊天
-- 利用插件系统添加丰富的额外功能
+- **自定义系统提示（性格）和发帖提示**
+- **根据已设置的周期和可见性自动发帖**
+- **实时响应用户提及（@）和聊天**
+- **使用多模态模型时，支持图片识别（需开启 Vision 插件）**
+- **利用插件系统添加丰富的额外功能**
   - [Example](./plugins/example)
   - [Cmd](./plugins/cmd)
   - [Topics](./plugins/topics)
+  - [Vision](./plugins/vision)
   - [Weather](./plugins/weather)
   - ...
 

@@ -194,11 +194,20 @@ class ChatHandler:
         text = message.get("text") or message.get("content") or message.get("body", "")
         user_id = extract_user_id(message)
         username = extract_username(message)
-        if not (user_id and text):
-            logger.debug(f"聊天缺少必要信息 - 用户 ID: {user_id}, 文本: {bool(text)}")
+        has_media = bool(message.get("fileId") or message.get("file"))
+        if not user_id:
+            logger.debug("聊天缺少必要信息 - 用户 ID 为空")
             return
-        logger.info(f"收到 @{username} 的聊天: {self.bot.format_log_text(text)}")
+        if not text and not has_media:
+            logger.debug("聊天缺少必要信息 - 文本为空且无媒体")
+            return
+        if text:
+            logger.info(f"收到 @{username} 的聊天: {self.bot.format_log_text(text)}")
+        else:
+            logger.info(f"收到 @{username} 的聊天: （无文本，包含媒体）")
         if await self._try_plugin_response(message, user_id, username):
+            return
+        if not text:
             return
         await self._generate_ai_response(user_id, username, text)
 
@@ -410,7 +419,11 @@ class MisskeyBot:
         self.plugin_manager = PluginManager(
             config,
             persistence=self.persistence,
-            context_objects={"misskey": self.misskey, "drive": self.misskey.drive},
+            context_objects={
+                "misskey": self.misskey,
+                "drive": self.misskey.drive,
+                "openai": self.openai,
+            },
         )
         self.runtime = BotRuntime(self)
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")

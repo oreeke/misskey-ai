@@ -323,6 +323,7 @@ class PluginManager:
             key=lambda x: x.priority,
             reverse=True,
         )
+        stop_on_handled = hook_name in {"on_message", "on_mention"}
         for plugin in enabled_plugins:
             if not hasattr(plugin, hook_name):
                 continue
@@ -331,8 +332,18 @@ class PluginManager:
                     result := await getattr(plugin, hook_name)(*args, **kwargs)
                 ) is not None:
                     results.append(result)
+                    if (
+                        stop_on_handled
+                        and isinstance(result, dict)
+                        and result.get("handled") is True
+                    ):
+                        break
             except (ValueError, OSError) as e:
                 logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错: {e}")
+            except Exception as e:
+                logger.exception(
+                    f"调用插件 {plugin.name} 的 {hook_name} hook 时发生未处理异常: {e}"
+                )
         return results
 
     def get_plugin_info(self) -> list[dict[str, Any]]:

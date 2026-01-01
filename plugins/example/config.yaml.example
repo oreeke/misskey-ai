@@ -1,7 +1,18 @@
 # Example 插件配置文件
 
-enabled: true                    # 插件总开关
+enabled: false                   # 插件总开关
 priority: 0                      # 插件优先级（数字越大优先级越高）
 
 greeting_enabled: true           # 是否启用问候功能
 auto_post_enabled: false         # 是否启用自动发帖功能
+allow_media_only: false          # 允许处理“无文本但含媒体”的聊天消息
+
+greeting_keywords:               # 命中任一关键词则回复问候
+  - "你好"
+  - "hello"
+  - "hi"
+
+test_keywords:                   # 用于示例“关键词判定”
+  - "插件"
+  - "测试"
+  - "example"

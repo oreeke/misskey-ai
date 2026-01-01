@@ -248,7 +248,11 @@ class StreamingClient:
         if not event_type and (
             event_data.get("fromUserId")
             and event_data.get("toUserId")
-            and event_data.get("text") is not None
+            and (
+                event_data.get("text") is not None
+                or event_data.get("fileId") is not None
+                or event_data.get("file") is not None
+            )
         ):
             event_type = "chat"
             event_data["type"] = event_type
@@ -320,6 +324,8 @@ class StreamingClient:
                     handler(data)
             except (ValueError, OSError) as e:
                 logger.error(f"事件处理器执行失败 ({event_type}): {e}")
+            except Exception as e:
+                logger.exception(f"事件处理器执行失败 ({event_type}): {e}")
 
     def _is_duplicate_event(
         self, event_id: Optional[str], event_type: Optional[str]

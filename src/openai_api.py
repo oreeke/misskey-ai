@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 
 import openai
 from loguru import logger
@@ -57,7 +57,7 @@ class OpenAIAPI:
     )
     async def _call_api_common(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         max_tokens: Optional[int],
         temperature: Optional[float],
         call_type: str,
@@ -77,7 +77,7 @@ class OpenAIAPI:
 
     async def _make_api_request(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         max_tokens: Optional[int],
         temperature: Optional[float],
     ):
@@ -114,8 +114,8 @@ class OpenAIAPI:
 
     def _build_messages(
         self, prompt: str, system_prompt: Optional[str] = None
-    ) -> list[dict[str, str]]:
-        messages = []
+    ) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt.strip()})
         messages.append({"role": "user", "content": prompt.strip()})
@@ -135,7 +135,7 @@ class OpenAIAPI:
 
     async def generate_chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
     ) -> str:

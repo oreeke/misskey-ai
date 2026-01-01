@@ -57,7 +57,7 @@ class WeatherPlugin(PluginBase):
     async def _process_weather_message(
         self, data: dict[str, Any]
     ) -> Optional[dict[str, Any]]:
-        text = data.get("text", "")
+        text = data.get("text") or ""
         if "天气" not in text and "weather" not in text:
             return None
         username = self._extract_username(data)
