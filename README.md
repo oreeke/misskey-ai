@@ -16,10 +16,13 @@
 
 ## 简介
 
+> \[!TIP]
+>
+> 切换模型仅需修改三个配置项：`api_key`，`model`，`api_base`
+
 ### 主要功能
 
 - **使用 OpenAI SDK 兼容性模型生成内容**
-- 切换模型仅需修改三个配置项：`api_key`，`model`，`api_base`
   - [OpenAI](https://platform.openai.com/docs/overview)
   - [DeepSeek](https://api-docs.deepseek.com/)（默认）
   - [Grok](https://docs.x.ai/docs/guides/migration)
