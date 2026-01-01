@@ -161,11 +161,5 @@ docker compose up -d
 
 > [!TIP]
 >
-> 切换模型仅需修改：`api_key`，`model`，`api_base`<br>
-> 相同 `api_base` 下的模型可通过 [Cmd](./plugins/cmd) 实时切换
-
-> [!NOTE]
->
-> 自动发帖会尽量绕过 [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)<br>
-> 但相同提示词依然容易输出近似内容<br>
-> 想让帖子多样化请配置并启用 [Topics](./plugins/topics) 插件
+> - 切换模型仅需修改 `api_key` `model` `api_base`，相同 `api_base` 的模型可通过 [Cmd](./plugins/cmd) 实时切换<br>
+> - 自动发帖会尽量绕过 [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)，想让帖子更多样化请配置并启用 [Topics](./plugins/topics) 插件
