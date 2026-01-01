@@ -21,7 +21,7 @@
 - 根据已设置的周期和可见性自动发帖
 - 实时响应用户提及（@）和聊天
 - 自定义系统提示（性格）和发帖提示
-- 使用多模态模型时，支持图片识别（需开启 Vision 插件）
+- 使用多模态模型时，支持图片识别（需开启 [Vision](./plugins/vision) 插件）
 - 配合 OpenAI SDK 兼容性模型生成内容
   - [OpenAI](https://platform.openai.com/docs/overview)
   - [DeepSeek](https://api-docs.deepseek.com/)（默认）
