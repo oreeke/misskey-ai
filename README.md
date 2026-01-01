@@ -97,7 +97,7 @@ python run.py
 
 > \[!TIP]
 >
-> 切换模型仅需修改三个字段：`api_key`，`model`，`api_base`
+> 切换模型仅需修改三个字段：`api_key`，`model`，`api_base`<br>
 > 相同 `api_base` 下的模型可通过 [Cmd](./plugins/cmd) 命令实时切换
 
 > 后台运行（可选）
