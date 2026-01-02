@@ -10,12 +10,12 @@ from cachetools import TTLCache
 from loguru import logger
 
 from .constants import (
-    CACHE_TTL,
-    MAX_CACHE,
     RECEIVE_TIMEOUT,
     STREAM_QUEUE_MAX,
     STREAM_QUEUE_PUT_TIMEOUT,
     STREAM_WORKERS,
+    STREAM_DEDUP_CACHE_MAX,
+    STREAM_DEDUP_CACHE_TTL,
     WS_MAX_RETRIES,
 )
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
@@ -36,7 +36,9 @@ class StreamingClient:
         self.transport = ClientSession
         self.channels: dict[str, dict[str, Any]] = {}
         self.event_handlers: dict[str, list[Callable]] = {}
-        self.processed_events = TTLCache(maxsize=MAX_CACHE, ttl=CACHE_TTL)
+        self.processed_events = TTLCache(
+            maxsize=STREAM_DEDUP_CACHE_MAX, ttl=STREAM_DEDUP_CACHE_TTL
+        )
         self._event_queue: asyncio.Queue[tuple[ChannelType, dict[str, Any]] | None] = (
             asyncio.Queue(maxsize=STREAM_QUEUE_MAX)
         )
