@@ -398,8 +398,9 @@ class StreamingClient:
         else:
             await self._handle_typed_event(channel_name, event_type, event_data)
 
+    @staticmethod
     async def _handle_no_event_type(
-        self, channel_name: str, event_data: dict[str, Any]
+        channel_name: str, event_data: dict[str, Any]
     ) -> None:
         event_id = event_data.get("id", "unknown")
         logger.debug(

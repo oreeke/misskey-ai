@@ -64,38 +64,43 @@ class PluginBase:
         self._initialized = False
         return False
 
-    async def initialize(self) -> bool:
+    @staticmethod
+    async def initialize() -> bool:
         return True
 
     async def cleanup(self) -> None:
         await self._cleanup_registered_resources()
 
-    async def on_startup(self) -> None:
+    @staticmethod
+    async def on_startup() -> None:
         pass
 
-    async def on_mention(self, _mention_data: dict[str, Any]) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_mention(_mention_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_message(self, _message_data: dict[str, Any]) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_message(_message_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_reaction(
-        self, _reaction_data: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_reaction(_reaction_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_follow(self, _follow_data: dict[str, Any]) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_follow(_follow_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_timeline_note(
-        self, _note_data: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_timeline_note(_note_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_auto_post(self) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_auto_post() -> dict[str, Any] | None:
         return None
 
-    async def on_shutdown(self) -> None:
+    @staticmethod
+    async def on_shutdown() -> None:
         pass
 
     def get_info(self) -> dict[str, Any]:
