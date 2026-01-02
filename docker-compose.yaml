@@ -21,7 +21,7 @@ services:
       - BOT_AUTO_POST_ENABLED=true                                 # 是否启用自动发帖
       - BOT_AUTO_POST_INTERVAL=180                                 # 发帖间隔（分钟）
       - BOT_AUTO_POST_MAX_PER_DAY=8                                # 每日最大发帖数量（凌晨 0 点重置计数器）
-      - BOT_AUTO_POST_VISIBILITY=public                            # 发帖可见性（public/home/followers/specified）
+      - BOT_AUTO_POST_VISIBILITY=public                            # 发帖可见性（public/home/followers）
       - BOT_AUTO_POST_PROMPT=生成一篇有趣、有见解的社交媒体帖子。      # 发帖提示词
       - BOT_RESPONSE_MENTION_ENABLED=true                          # 是否响应提及（@）
       - BOT_RESPONSE_CHAT_ENABLED=true                             # 是否响应聊天

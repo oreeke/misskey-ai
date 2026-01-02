@@ -1,0 +1,38 @@
+# Radar 插件配置文件（订阅时间线后生效）
+# include_users/exclude_users/include_keywords/exclude_keywords 至少一项不为空
+
+enabled: false                   # 插件总开关
+priority: 50                     # 插件优先级（数字越大越先执行）
+
+include_users: []                # 白名单：用户名或 name@host；空=不限定（支持列表或字符串，逗号/空格分隔）
+exclude_users: []                # 黑名单：用户名或 name@host；空=不排除
+
+include_keywords: |              # 包含关键词（可为空），AND 条件用空格分隔（同一行内）；OR 条件用换行分隔
+  猫 可爱
+  misskey bot
+exclude_keywords: |              # 排除关键词（可为空），同上；与 include 同时生效（先包含命中，再排除过滤）
+  广告
+  抽奖
+
+allow_attachments: true          # 是否允许“含附件”的帖子参与匹配
+include_bot_users: false         # 是否包含“其他机器人用户”的帖子
+keyword_case_sensitive: false    # 关键词是否区分大小写
+
+reaction: ""                     # 反应（例如 "heart"/":emoji:"）；留空表示不反应
+
+reply_enabled: false             # 是否回复
+reply_text: ""                   # 自定义回复内容（可用 {username}）；留空可配合 reply_ai
+reply_ai: false                  # AI 自动回复（基于帖子内容生成；reply_text 为空时才生效）
+reply_ai_prompt: ""              # AI 回复提示词（可用 {content}）；留空使用内置默认提示词
+
+renote_enabled: false            # 是否转贴
+renote_visibility: "home"        # 转贴可见性：public/home/followers
+
+quote_enabled: false             # 是否引用
+quote_text: ""                   # 自定义引用内容（可用 {username}）；留空可配合 quote_ai
+quote_ai: false                  # AI 自动写一句引用感想（quote_text 为空时才生效）
+quote_ai_prompt: ""              # AI 引用提示词（可用 {content}）；留空使用内置默认提示词
+quote_visibility: "home"         # 引用可见性：public/home/followers
+
+dedupe_maxsize: 2000             # 事件去重缓存容量（避免重复处理同一 note）
+dedupe_ttl_seconds: 600          # 去重缓存 TTL（秒）

@@ -236,9 +236,8 @@ class Config:
             "public",
             "home",
             "followers",
-            "specified",
         }:
-            raise ConfigurationError("发帖可见性必须是 public/home/followers/specified")
+            raise ConfigurationError("发帖可见性必须是 public/home/followers")
 
     def _validate_file_paths(self) -> None:
         paths = [

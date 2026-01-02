@@ -260,12 +260,11 @@ class MisskeyAPI:
         if visibility is None:
             return original_visibility
         visibility_priority = {
-            "specified": 0,
             "followers": 1,
             "home": 2,
             "public": 3,
         }
-        original_priority = visibility_priority.get(original_visibility, 3)
+        original_priority = visibility_priority.get(original_visibility, 0)
         reply_priority = visibility_priority.get(visibility, 3)
         if reply_priority > original_priority:
             logger.debug(
@@ -336,6 +335,34 @@ class MisskeyAPI:
             "chat/messages/create-to-user", {"toUserId": user_id, "text": text}
         )
         logger.debug(f"Misskey 聊天发送成功，message_id: {result.get('id', 'unknown')}")
+        return result
+
+    async def create_reaction(self, note_id: str, reaction: str) -> dict[str, Any]:
+        if not note_id:
+            raise ValueError("note_id 不能为空")
+        if not reaction:
+            raise ValueError("reaction 不能为空")
+        return await self.make_request(
+            "notes/reactions/create", {"noteId": note_id, "reaction": reaction}
+        )
+
+    async def create_renote(
+        self,
+        note_id: str,
+        visibility: str | None = None,
+        text: str | None = None,
+    ) -> dict[str, Any]:
+        if not note_id:
+            raise ValueError("note_id 不能为空")
+        data: dict[str, Any] = {"renoteId": note_id}
+        if visibility:
+            data["visibility"] = visibility
+        if text:
+            data["text"] = text
+        result = await self.make_request("notes/create", data)
+        logger.debug(
+            f"Misskey 转贴成功，note_id: {result.get('createdNote', {}).get('id', 'unknown')}"
+        )
         return result
 
     async def get_messages(
