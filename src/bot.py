@@ -90,7 +90,7 @@ class MentionHandler:
         if not mention.mention_id:
             return
         try:
-            async with self.bot._lock_actor(mention.user_id, mention.username):
+            async with self.bot.lock_actor(mention.user_id, mention.username):
                 logger.info(
                     f"收到 @{mention.username} 的提及: {self.bot.format_log_text(mention.text)}"
                 )
@@ -214,7 +214,7 @@ class ChatHandler:
         if not text and not has_media:
             logger.debug("聊天缺少必要信息 - 文本为空且无媒体")
             return
-        async with self.bot._lock_actor(user_id, username):
+        async with self.bot.lock_actor(user_id, username):
             if text:
                 logger.info(
                     f"收到 @{username} 的聊天: {self.bot.format_log_text(text)}"
@@ -242,7 +242,7 @@ class ChatHandler:
                     )
                     text = message.get("text") or message.get("content") or ""
                     if text:
-                        self.bot._append_chat_turn(
+                        self.bot.append_chat_turn(
                             user_id,
                             text,
                             response,
@@ -255,7 +255,7 @@ class ChatHandler:
         self, user_id: str, username: str, text: str
     ) -> None:
         limit = self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
-        history = await self.bot._get_or_load_chat_history(user_id, limit=limit)
+        history = await self.bot.get_or_load_chat_history(user_id, limit=limit)
         messages: list[dict[str, str]] = []
         if self.bot.system_prompt:
             messages.append({"role": "system", "content": self.bot.system_prompt})
@@ -265,9 +265,9 @@ class ChatHandler:
         logger.debug("生成聊天回复成功")
         await self.bot.misskey.send_message(user_id, reply)
         logger.info(f"已回复 @{username}: {self.bot.format_log_text(reply)}")
-        self.bot._append_chat_turn(user_id, text, reply, limit)
+        self.bot.append_chat_turn(user_id, text, reply, limit)
 
-    async def _get_chat_history(
+    async def get_chat_history(
         self, user_id: str, limit: int | None = None
     ) -> list[dict[str, str]]:
         try:
@@ -488,21 +488,21 @@ class MisskeyBot:
             self._user_locks[key] = asyncio.Lock()
         return self._user_locks[key]
 
-    def _lock_actor(self, user_id: str | None, username: str | None):
+    def lock_actor(self, user_id: str | None, username: str | None):
         return self._get_actor_lock(user_id, username)
 
-    async def _get_or_load_chat_history(
+    async def get_or_load_chat_history(
         self, user_id: str, *, limit: int | None
     ) -> list[dict[str, str]]:
         limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
         if (cached := self._chat_histories.get(user_id)) is not None:
             return list(cached)[-max(0, limit * 2) :]
-        history = await self.handlers.chat._get_chat_history(user_id, limit=limit)
+        history = await self.handlers.chat.get_chat_history(user_id, limit=limit)
         trimmed = history[-max(0, limit * 2) :]
         self._chat_histories[user_id] = trimmed
         return list(trimmed)
 
-    def _append_chat_turn(
+    def append_chat_turn(
         self, user_id: str, user_text: str, assistant_text: str, limit: int | None
     ) -> None:
         limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
