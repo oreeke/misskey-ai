@@ -244,10 +244,13 @@ class CmdPlugin(PluginBase):
             return None
 
     async def on_message(self, message_data: dict[str, Any]) -> dict[str, Any] | None:
+        raw = message_data.get("text") or message_data.get("content") or ""
+        if not isinstance(raw, str):
+            return None
+        text = raw.strip()
+        if not text.startswith("^"):
+            return None
         try:
-            text = message_data.get("text", "").strip()
-            if not text.startswith("^"):
-                return None
             user_id = self._extract_user_id(message_data)
             username = self._extract_username(message_data)
             if not user_id:
