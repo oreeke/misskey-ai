@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -14,6 +15,7 @@ from .constants import (
     HTTP_OK,
     HTTP_TOO_MANY_REQUESTS,
     HTTP_UNAUTHORIZED,
+    MISSKEY_MAX_CONCURRENCY,
 )
 from .exceptions import (
     APIBadRequestError,
@@ -147,6 +149,7 @@ class MisskeyAPI:
         self.access_token = access_token
         self.transport: TCPClient = ClientSession
         self.drive: MisskeyDrive = MisskeyDrive(self)
+        self._semaphore = asyncio.Semaphore(MISSKEY_MAX_CONCURRENCY)
 
     async def __aenter__(self):
         return self
@@ -210,8 +213,9 @@ class MisskeyAPI:
             payload.update(data)
         try:
             session: aiohttp.ClientSession = self.session
-            async with session.post(url, json=payload) as response:
-                return await self._process_response(response, endpoint)
+            async with self._semaphore:
+                async with session.post(url, json=payload) as response:
+                    return await self._process_response(response, endpoint)
         except (
             aiohttp.ClientError,
             json.JSONDecodeError,
@@ -233,8 +237,9 @@ class MisskeyAPI:
         try:
             form, resources = build_form()
             session: aiohttp.ClientSession = self.session
-            async with session.post(url, data=form) as response:
-                return await self._process_response(response, endpoint)
+            async with self._semaphore:
+                async with session.post(url, data=form) as response:
+                    return await self._process_response(response, endpoint)
         except (aiohttp.ClientError, json.JSONDecodeError) as e:
             logger.error(f"HTTP 请求错误: {e}")
             raise APIConnectionError() from e
@@ -512,20 +517,23 @@ class MisskeyDrive:
     async def fetch_bytes(self, url: str, *, max_bytes: int | None = None) -> bytes:
         try:
             session: aiohttp.ClientSession = self._api.session
-            async with session.get(url) as response:
-                if response.status != HTTP_OK:
-                    self._api.handle_response_status(response, "drive/files/download")
-                    raise APIConnectionError()
-                if max_bytes is None:
-                    return await response.read()
-                chunks: list[bytes] = []
-                total = 0
-                async for chunk in response.content.iter_chunked(65536):
-                    total += len(chunk)
-                    if total > max_bytes:
-                        raise ValueError("文件大小超过限制")
-                    chunks.append(chunk)
-                return b"".join(chunks)
+            async with self._api._semaphore:
+                async with session.get(url) as response:
+                    if response.status != HTTP_OK:
+                        self._api.handle_response_status(
+                            response, "drive/files/download"
+                        )
+                        raise APIConnectionError()
+                    if max_bytes is None:
+                        return await response.read()
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in response.content.iter_chunked(65536):
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise ValueError("文件大小超过限制")
+                        chunks.append(chunk)
+                    return b"".join(chunks)
         except (aiohttp.ClientError, OSError) as e:
             raise APIConnectionError() from e
 

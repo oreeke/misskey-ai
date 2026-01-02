@@ -9,7 +9,15 @@ import aiohttp
 from cachetools import TTLCache
 from loguru import logger
 
-from .constants import CACHE_TTL, MAX_CACHE, RECEIVE_TIMEOUT, WS_MAX_RETRIES
+from .constants import (
+    CACHE_TTL,
+    MAX_CACHE,
+    RECEIVE_TIMEOUT,
+    STREAM_QUEUE_MAX,
+    STREAM_QUEUE_PUT_TIMEOUT,
+    STREAM_WORKERS,
+    WS_MAX_RETRIES,
+)
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .transport import ClientSession
 
@@ -29,6 +37,12 @@ class StreamingClient:
         self.channels: dict[str, dict[str, Any]] = {}
         self.event_handlers: dict[str, list[Callable]] = {}
         self.processed_events = TTLCache(maxsize=MAX_CACHE, ttl=CACHE_TTL)
+        self._event_queue: asyncio.Queue[tuple[ChannelType, dict[str, Any]] | None] = (
+            asyncio.Queue(maxsize=STREAM_QUEUE_MAX)
+        )
+        self._worker_count = STREAM_WORKERS
+        self._queue_put_timeout = STREAM_QUEUE_PUT_TIMEOUT
+        self._workers: list[asyncio.Task[None]] = []
         self.running = False
         self.should_reconnect = True
         self._first_connection = True
@@ -42,6 +56,7 @@ class StreamingClient:
 
     async def close(self) -> None:
         await self.disconnect()
+        await self._stop_workers()
         await self._close_websocket()
         await self.transport.close_session(silent=True)
         self.processed_events.clear()
@@ -145,6 +160,7 @@ class StreamingClient:
         if self.running:
             return
         self.running = True
+        self._ensure_workers_started()
         await self._connect_websocket()
         if channels:
             for channel in channels:
@@ -264,7 +280,54 @@ class StreamingClient:
             logger.debug(
                 f"收到 {channel_type.value} 频道事件: {event_type} (频道 ID: {channel_id}, 事件 ID: {event_id})"
             )
-        await self._dispatch_event(channel_type, event_data)
+        await self._enqueue_event(channel_type, event_data)
+
+    def _ensure_workers_started(self) -> None:
+        if self._workers:
+            return
+        self._workers = [
+            asyncio.create_task(self._worker_loop(), name=f"stream-worker-{i}")
+            for i in range(self._worker_count)
+        ]
+
+    async def _stop_workers(self) -> None:
+        if not self._workers:
+            return
+        while not self._event_queue.empty():
+            try:
+                self._event_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        for _ in self._workers:
+            await self._event_queue.put(None)
+        await asyncio.gather(*self._workers, return_exceptions=True)
+        self._workers.clear()
+
+    async def _enqueue_event(
+        self, channel_type: ChannelType, event_data: dict[str, Any]
+    ):
+        try:
+            await asyncio.wait_for(
+                self._event_queue.put((channel_type, event_data)),
+                timeout=self._queue_put_timeout,
+            )
+        except asyncio.TimeoutError:
+            event_id = event_data.get("id", "unknown")
+            event_type = event_data.get("type", "unknown")
+            logger.warning(f"事件队列拥塞，丢弃事件: {event_type} (ID: {event_id})")
+
+    async def _worker_loop(self) -> None:
+        while True:
+            item = await self._event_queue.get()
+            if item is None:
+                return
+            channel_type, event_data = item
+            try:
+                await self._dispatch_event(channel_type, event_data)
+            except (ValueError, TypeError, AttributeError, KeyError) as e:
+                logger.error(f"处理事件失败: {e}")
+            except Exception as e:
+                logger.exception(f"处理事件失败: {e}")
 
     async def _dispatch_event(
         self, channel_type: ChannelType, event_data: dict[str, Any]
@@ -283,8 +346,9 @@ class StreamingClient:
             f"收到无事件类型的数据 - 频道: {channel_type.value}, 事件 ID: {event_id}"
         )
         logger.debug(f"数据结构: {list(event_data.keys())}")
-        logger.debug(
-            f"事件数据: {json.dumps(event_data, ensure_ascii=False, indent=2)}"
+        logger.opt(lazy=True).debug(
+            "事件数据: {}",
+            lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
         )
 
     async def _handle_typed_event(
@@ -311,8 +375,9 @@ class StreamingClient:
         else:
             logger.debug(f"收到未知类型的 main 频道事件: {event_type}")
             logger.debug(f"数据结构: {list(event_data.keys())}")
-            logger.debug(
-                f"事件数据: {json.dumps(event_data, ensure_ascii=False, indent=2)}"
+            logger.opt(lazy=True).debug(
+                "事件数据: {}",
+                lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
             )
 
     async def _call_handlers(self, event_type: str, data: dict[str, Any]) -> None:

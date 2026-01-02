@@ -1,16 +1,22 @@
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from cachetools import TTLCache
 from loguru import logger
 
 from .config import Config
 from .constants import (
+    CHAT_CACHE_MAX_USERS,
+    CHAT_CACHE_TTL,
     DEFAULT_ERROR_MESSAGE,
     ERROR_MESSAGES,
     ConfigKeys,
+    USER_LOCK_CACHE_MAX,
+    USER_LOCK_TTL,
 )
 from .exceptions import (
     APIBadRequestError,
@@ -84,12 +90,13 @@ class MentionHandler:
         if not mention.mention_id:
             return
         try:
-            logger.info(
-                f"收到 @{mention.username} 的提及: {self.bot.format_log_text(mention.text)}"
-            )
-            if await self._try_plugin_response(mention, note):
-                return
-            await self._generate_ai_response(mention)
+            async with self.bot._lock_actor(mention.user_id, mention.username):
+                logger.info(
+                    f"收到 @{mention.username} 的提及: {self.bot.format_log_text(mention.text)}"
+                )
+                if await self._try_plugin_response(mention, note):
+                    return
+                await self._generate_ai_response(mention)
         except (
             ValueError,
             APIBadRequestError,
@@ -104,7 +111,10 @@ class MentionHandler:
     def _parse(self, note: dict[str, Any]) -> MentionContext:
         try:
             is_reply_event = note.get("type") == "reply" and "note" in note
-            logger.debug(f"提及数据: {json.dumps(note, ensure_ascii=False, indent=2)}")
+            logger.opt(lazy=True).debug(
+                "提及数据: {}",
+                lambda: json.dumps(note, ensure_ascii=False, indent=2),
+            )
             mention_id = note.get("id")
             reply_target_id = note.get("note", {}).get("id")
             if is_reply_event:
@@ -176,7 +186,10 @@ class ChatHandler:
         if not message.get("id"):
             logger.debug("缺少 ID，跳过处理")
             return
-        logger.debug(f"聊天数据: {json.dumps(message, ensure_ascii=False, indent=2)}")
+        logger.opt(lazy=True).debug(
+            "聊天数据: {}",
+            lambda: json.dumps(message, ensure_ascii=False, indent=2),
+        )
         try:
             await self._process(message)
         except (
@@ -201,15 +214,18 @@ class ChatHandler:
         if not text and not has_media:
             logger.debug("聊天缺少必要信息 - 文本为空且无媒体")
             return
-        if text:
-            logger.info(f"收到 @{username} 的聊天: {self.bot.format_log_text(text)}")
-        else:
-            logger.info(f"收到 @{username} 的聊天: （无文本，包含媒体）")
-        if await self._try_plugin_response(message, user_id, username):
-            return
-        if not text:
-            return
-        await self._generate_ai_response(user_id, username, text)
+        async with self.bot._lock_actor(user_id, username):
+            if text:
+                logger.info(
+                    f"收到 @{username} 的聊天: {self.bot.format_log_text(text)}"
+                )
+            else:
+                logger.info(f"收到 @{username} 的聊天: （无文本，包含媒体）")
+            if await self._try_plugin_response(message, user_id, username):
+                return
+            if not text:
+                return
+            await self._generate_ai_response(user_id, username, text)
 
     async def _try_plugin_response(
         self, message: dict[str, Any], user_id: str, username: str
@@ -224,21 +240,32 @@ class ChatHandler:
                     logger.info(
                         f"插件已回复 @{username}: {self.bot.format_log_text(response)}"
                     )
+                    text = message.get("text") or message.get("content") or ""
+                    if text:
+                        self.bot._append_chat_turn(
+                            user_id,
+                            text,
+                            response,
+                            self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY),
+                        )
                 return True
         return False
 
     async def _generate_ai_response(
         self, user_id: str, username: str, text: str
     ) -> None:
-        history = await self._get_chat_history(user_id)
-        history.append({"role": "user", "content": text})
-        if not history or history[0].get("role") != "system":
-            history.insert(0, {"role": "system", "content": self.bot.system_prompt})
-        reply = await self.bot.openai.generate_chat(history, **self.bot.ai_config)
+        limit = self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+        history = await self.bot._get_or_load_chat_history(user_id, limit=limit)
+        messages: list[dict[str, str]] = []
+        if self.bot.system_prompt:
+            messages.append({"role": "system", "content": self.bot.system_prompt})
+        messages.extend(history)
+        messages.append({"role": "user", "content": text})
+        reply = await self.bot.openai.generate_chat(messages, **self.bot.ai_config)
         logger.debug("生成聊天回复成功")
         await self.bot.misskey.send_message(user_id, reply)
         logger.info(f"已回复 @{username}: {self.bot.format_log_text(reply)}")
-        history.append({"role": "assistant", "content": reply})
+        self.bot._append_chat_turn(user_id, text, reply, limit)
 
     async def _get_chat_history(
         self, user_id: str, limit: int | None = None
@@ -267,7 +294,10 @@ class ReactionHandler:
         note_id = reaction.get("note", {}).get("id", "unknown")
         reaction_type = reaction.get("reaction", "unknown")
         logger.info(f"用户 @{username} 对帖子 {note_id} 做出反应: {reaction_type}")
-        logger.debug(f"反应数据: {json.dumps(reaction, ensure_ascii=False, indent=2)}")
+        logger.opt(lazy=True).debug(
+            "反应数据: {}",
+            lambda: json.dumps(reaction, ensure_ascii=False, indent=2),
+        )
         try:
             await self.bot.plugin_manager.on_reaction(reaction)
         except (ValueError, OSError) as e:
@@ -281,7 +311,10 @@ class FollowHandler:
     async def handle(self, follow: dict[str, Any]) -> None:
         username = extract_username(follow)
         logger.info(f"用户 @{username} 关注了 @{self.bot.bot_username}")
-        logger.debug(f"关注数据: {json.dumps(follow, ensure_ascii=False, indent=2)}")
+        logger.opt(lazy=True).debug(
+            "关注数据: {}",
+            lambda: json.dumps(follow, ensure_ascii=False, indent=2),
+        )
         try:
             await self.bot.plugin_manager.on_follow(follow)
         except (ValueError, OSError) as e:
@@ -429,8 +462,64 @@ class MisskeyBot:
         self.system_prompt = config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "")
         self.bot_user_id = None
         self.bot_username = None
+        self._user_locks: TTLCache[str, asyncio.Lock] = TTLCache(
+            maxsize=USER_LOCK_CACHE_MAX, ttl=USER_LOCK_TTL
+        )
+        self._chat_histories: TTLCache[str, list[dict[str, str]]] = TTLCache(
+            maxsize=CHAT_CACHE_MAX_USERS, ttl=CHAT_CACHE_TTL
+        )
         self.handlers = BotHandlers(self)
         logger.info("机器人初始化完成")
+
+    def _actor_key(self, user_id: str | None, username: str | None) -> str | None:
+        if user_id:
+            return f"id:{user_id}"
+        if username:
+            return f"name:{username}"
+        return None
+
+    def _get_actor_lock(
+        self, user_id: str | None, username: str | None
+    ) -> asyncio.Lock:
+        key = self._actor_key(user_id, username)
+        if not key:
+            return asyncio.Lock()
+        if key not in self._user_locks:
+            self._user_locks[key] = asyncio.Lock()
+        return self._user_locks[key]
+
+    def _lock_actor(self, user_id: str | None, username: str | None):
+        return self._get_actor_lock(user_id, username)
+
+    async def _get_or_load_chat_history(
+        self, user_id: str, *, limit: int | None
+    ) -> list[dict[str, str]]:
+        limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+        if (cached := self._chat_histories.get(user_id)) is not None:
+            return list(cached)[-max(0, limit * 2) :]
+        history = await self.handlers.chat._get_chat_history(user_id, limit=limit)
+        trimmed = history[-max(0, limit * 2) :]
+        self._chat_histories[user_id] = trimmed
+        return list(trimmed)
+
+    def _append_chat_turn(
+        self, user_id: str, user_text: str, assistant_text: str, limit: int | None
+    ) -> None:
+        limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+        history = list(self._chat_histories.get(user_id) or [])
+        if user_text and not (
+            history
+            and history[-1].get("role") == "user"
+            and history[-1].get("content") == user_text
+        ):
+            history.append({"role": "user", "content": user_text})
+        if assistant_text and not (
+            history
+            and history[-1].get("role") == "assistant"
+            and history[-1].get("content") == assistant_text
+        ):
+            history.append({"role": "assistant", "content": assistant_text})
+        self._chat_histories[user_id] = history[-max(0, limit * 2) :]
 
     async def __aenter__(self):
         await self.start()

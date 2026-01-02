@@ -13,7 +13,12 @@ from openai import (
     Timeout,
 )
 
-from .constants import API_MAX_RETRIES, API_TIMEOUT, REQUEST_TIMEOUT
+from .constants import (
+    API_MAX_RETRIES,
+    API_TIMEOUT,
+    OPENAI_MAX_CONCURRENCY,
+    REQUEST_TIMEOUT,
+)
 from .exceptions import APIConnectionError, AuthenticationError
 from .utils import retry_async
 
@@ -30,6 +35,7 @@ class OpenAIAPI:
         self.api_key = api_key
         self.model = model
         self.api_base = api_base
+        self._semaphore = asyncio.Semaphore(OPENAI_MAX_CONCURRENCY)
         try:
             self.client = openai.AsyncOpenAI(
                 api_key=self.api_key, base_url=self.api_base, timeout=API_TIMEOUT
@@ -81,15 +87,16 @@ class OpenAIAPI:
         max_tokens: int | None,
         temperature: float | None,
     ):
-        return await asyncio.wait_for(
-            self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            ),
-            timeout=REQUEST_TIMEOUT,
-        )
+        async with self._semaphore:
+            return await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=REQUEST_TIMEOUT,
+            )
 
     def _process_api_response(self, response, call_type: str) -> str:
         generated_text = response.choices[0].message.content
