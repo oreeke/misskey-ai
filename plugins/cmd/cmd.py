@@ -119,11 +119,13 @@ class CmdPlugin(PluginBase):
         allowed_count = len(self.allowed_users)
         return f"机器人状态: {status}\n授权用户数: {allowed_count}"
 
-    def _get_system_info(self) -> str:
+    @staticmethod
+    def _get_system_info() -> str:
         info = get_system_info()
         return f"系统信息:\n平台: {info['platform']}\nPython 版本: {info['python_version']}\nCPU 核心数: {info['cpu_count']}\n内存总量: {info['memory_total_gb']} GB\n进程 ID: {info['process_id']}"
 
-    def _get_memory_usage(self) -> str:
+    @staticmethod
+    def _get_memory_usage() -> str:
         process_usage = get_memory_usage()
         return f"内存使用: {process_usage['rss_mb']} MB"
 

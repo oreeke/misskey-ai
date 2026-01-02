@@ -170,7 +170,8 @@ class MisskeyAPI:
     def semaphore(self) -> asyncio.Semaphore:
         return self._semaphore
 
-    def handle_response_status(self, response, endpoint: str):
+    @staticmethod
+    def handle_response_status(response, endpoint: str):
         status = response.status
         if status == HTTP_BAD_REQUEST:
             logger.error(f"API 请求错误: {endpoint}")

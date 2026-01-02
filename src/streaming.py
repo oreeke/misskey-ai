@@ -322,10 +322,13 @@ class StreamingClient:
         self, channel_name: str, event_data: dict[str, Any]
     ) -> tuple[str | None, dict[str, Any]]:
         event_type = event_data.get("type")
-        if not event_type and channel_name in TIMELINE_CHANNELS:
-            if self._looks_like_note(event_data):
-                wrapped = {"type": "note", "body": event_data}
-                return "note", wrapped
+        if (
+            not event_type
+            and channel_name in TIMELINE_CHANNELS
+            and self._looks_like_note(event_data)
+        ):
+            wrapped = {"type": "note", "body": event_data}
+            return "note", wrapped
         if not event_type and self._is_chat_payload(event_data):
             event_data["type"] = "chat"
             return "chat", event_data

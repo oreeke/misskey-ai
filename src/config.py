@@ -140,7 +140,8 @@ class Config:
             raise ConfigurationError(f"缺少必要配置项: {desc or key}")
         return value
 
-    def _get_builtin_default(self, key: str) -> Any:
+    @staticmethod
+    def _get_builtin_default(key: str) -> Any:
         builtin_defaults = {
             ConfigKeys.MISSKEY_INSTANCE_URL: None,
             ConfigKeys.MISSKEY_ACCESS_TOKEN: None,

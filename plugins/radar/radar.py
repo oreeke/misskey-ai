@@ -212,29 +212,41 @@ class RadarPlugin(PluginBase):
         t = text if self.keyword_case_sensitive else text.lower()
         return any(all(token in t for token in group) for group in groups)
 
+    def _should_skip_self(self, note: dict[str, Any], variants: set[str]) -> bool:
+        if not self.skip_self or not hasattr(self, "bot"):
+            return False
+        bot_id = getattr(self.bot, "bot_user_id", None)
+        if bot_id and note.get("userId") == bot_id:
+            return True
+        bot_name = getattr(self.bot, "bot_username", None)
+        return isinstance(bot_name, str) and bot_name and bot_name.lower() in variants
+
+    def _should_skip_user(self, variants: set[str]) -> bool:
+        if self.include_users and variants.isdisjoint(self.include_users):
+            return True
+        return bool(self.exclude_users) and not variants.isdisjoint(self.exclude_users)
+
+    def _should_skip_keywords(self, text: str) -> bool:
+        if not self._match_groups(text, self.include_groups):
+            return True
+        return bool(self.exclude_groups) and self._match_groups(
+            text, self.exclude_groups
+        )
+
     def _should_process(self, note: dict[str, Any]) -> bool:
         if not self.has_any_filter:
             return False
         variants = self._extract_user_variants(note)
-        if self.skip_self and hasattr(self, "bot"):
-            bot_id = getattr(self.bot, "bot_user_id", None)
-            if bot_id and note.get("userId") == bot_id:
-                return False
-            bot_name = getattr(self.bot, "bot_username", None)
-            if isinstance(bot_name, str) and bot_name and bot_name.lower() in variants:
-                return False
+        if self._should_skip_self(note, variants):
+            return False
         if not self.include_bot_users and self._is_bot_user(note):
             return False
-        if self.include_users and not (variants & self.include_users):
-            return False
-        if self.exclude_users and (variants & self.exclude_users):
+        if self._should_skip_user(variants):
             return False
         if not self.allow_attachments and self._has_attachments(note):
             return False
         text = self._effective_text(note)
-        if not self._match_groups(text, self.include_groups):
-            return False
-        if self.exclude_groups and self._match_groups(text, self.exclude_groups):
+        if self._should_skip_keywords(text):
             return False
         return True
 

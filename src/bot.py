@@ -654,7 +654,8 @@ class MisskeyBot:
         finally:
             logger.info("服务组件已停止")
 
-    def format_log_text(self, text: str, max_length: int = 50) -> str:
+    @staticmethod
+    def format_log_text(text: str, max_length: int = 50) -> str:
         return (
             "None"
             if not text
