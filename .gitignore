@@ -23,6 +23,7 @@ htmlcov/
 # Config files
 config.yaml
 !config.yaml.example
+.pylintrc
 
 # Text files
 *.txt
