@@ -64,9 +64,9 @@ class ErrorResponder:
                 user_id = extract_user_id(message)
                 if user_id:
                     await self.bot.misskey.send_message(user_id, error_message)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"发送错误回复失败: {e}")
 
 
@@ -89,9 +89,9 @@ class MentionHandler:
                 if await self._try_plugin_response(mention, note):
                     return
                 await self._generate_ai_response(mention)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"处理提及时出错: {e}")
             await self.errors.handle(e, mention=mention)
 
@@ -179,9 +179,9 @@ class ChatHandler:
         )
         try:
             await self._process(message)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"处理聊天时出错: {e}")
             await self.errors.handle(e, message=message)
 
@@ -262,9 +262,9 @@ class ChatHandler:
                 }
                 for msg in reversed(messages)
             ]
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"获取聊天历史时出错: {e}")
             return []
 
@@ -284,9 +284,9 @@ class ReactionHandler:
         )
         try:
             await self.bot.plugin_manager.on_reaction(reaction)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"处理反应事件时出错: {e}")
 
 
@@ -303,9 +303,9 @@ class FollowHandler:
         )
         try:
             await self.bot.plugin_manager.on_follow(follow)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"处理关注事件时出错: {e}")
 
 
@@ -324,9 +324,9 @@ class AutoPostService:
             if await self._try_plugin_post(plugin_results, max_posts):
                 return
             await self._generate_ai_post(plugin_results, max_posts)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"自动发帖时出错: {e}")
 
     async def _try_plugin_post(self, plugin_results: list[Any], max_posts: int) -> bool:
@@ -612,9 +612,9 @@ class MisskeyBot:
             channels = self.get_streaming_channels()
             await self.streaming.connect_once(channels)
             self.runtime.add_task("streaming", self.streaming.connect(channels))
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.exception(f"设置 Streaming 连接失败: {e}")
             raise
 
@@ -635,9 +635,9 @@ class MisskeyBot:
             await self.openai.close()
             await ClientSession.close_session(silent=True)
             await self.persistence.close()
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.exception(f"停止机器人时出错: {e}")
         finally:
             logger.info("服务组件已停止")

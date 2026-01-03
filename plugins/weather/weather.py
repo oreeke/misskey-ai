@@ -42,18 +42,18 @@ class WeatherPlugin(PluginBase):
                 data.get("note", data) if "note" in data and "type" in data else data
             )
             return await self._process_weather_message(note_data)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"Weather 插件处理提及时出错: {e}")
             return None
 
     async def on_message(self, message_data: dict[str, Any]) -> dict[str, Any] | None:
         try:
             return await self._process_weather_message(message_data)
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"Weather 插件处理消息时出错: {e}")
             return None
 
@@ -117,9 +117,9 @@ class WeatherPlugin(PluginBase):
                     return self._format_weather_info_v25(data, display_name)
                 logger.warning(f"Weather API 2.5 请求失败，状态码: {response.status}")
                 return "抱歉，天气服务暂时不可用。"
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"获取天气信息失败: {e}")
             return "抱歉，获取天气信息时出现错误。"
 
@@ -142,9 +142,9 @@ class WeatherPlugin(PluginBase):
                 if "country" in location:
                     display_name += f", {location['country']}"
                 return float(location["lat"]), float(location["lon"]), display_name
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"获取城市坐标失败: {e}")
             return None
 

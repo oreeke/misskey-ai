@@ -188,9 +188,9 @@ class PersistenceManager:
         try:
             await conn.execute("VACUUM")
             logger.debug("数据库优化完成")
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"数据库优化失败: {e}")
         finally:
             await self._pool.return_connection(conn)

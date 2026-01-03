@@ -73,38 +73,43 @@ class PluginBase:
         self._initialized = False
         return False
 
-    async def initialize(self) -> bool:
+    @staticmethod
+    async def initialize() -> bool:
         return True
 
     async def cleanup(self) -> None:
         await self._cleanup_registered_resources()
 
-    async def on_startup(self) -> None:
+    @staticmethod
+    async def on_startup() -> None:
         return None
 
-    async def on_mention(self, _mention_data: dict[str, Any]) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_mention(_mention_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_message(self, _message_data: dict[str, Any]) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_message(_message_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_reaction(
-        self, _reaction_data: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_reaction(_reaction_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_follow(self, _follow_data: dict[str, Any]) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_follow(_follow_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_timeline_note(
-        self, _note_data: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_timeline_note(_note_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    async def on_auto_post(self) -> dict[str, Any] | None:
+    @staticmethod
+    async def on_auto_post() -> dict[str, Any] | None:
         return None
 
-    async def on_shutdown(self) -> None:
+    @staticmethod
+    async def on_shutdown() -> None:
         return None
 
     def get_info(self) -> dict[str, Any]:
@@ -153,9 +158,9 @@ class PluginBase:
                         await method()
                     else:
                         method()
-            except asyncio.CancelledError:
-                raise
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.error(f"插件 {self.name} 清理资源失败: {e}")
         self._resources_to_cleanup.clear()
 
@@ -302,9 +307,9 @@ class PluginManager:
                 else:
                     logger.warning(f"插件 {plugin.name} 初始化失败")
                     plugin.set_enabled(False)
-            except asyncio.CancelledError:
-                raise
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.exception(f"初始化插件 {plugin.name} 时出错: {e}")
                 plugin.set_enabled(False)
 
@@ -313,9 +318,9 @@ class PluginManager:
             if plugin.enabled:
                 try:
                     await plugin.cleanup()
-                except asyncio.CancelledError:
-                    raise
                 except Exception as e:
+                    if isinstance(e, asyncio.CancelledError):
+                        raise
                     logger.exception(f"清理插件 {plugin.name} 时出错: {e}")
 
     async def on_startup(self) -> None:
@@ -364,9 +369,9 @@ class PluginManager:
                         and result.get("handled") is True
                     ):
                         break
-            except asyncio.CancelledError:
-                raise
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.exception(
                     f"调用插件 {plugin.name} 的 {hook_name} hook 时发生未处理异常: {e}"
                 )

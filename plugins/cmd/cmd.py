@@ -100,9 +100,9 @@ class CmdPlugin(PluginBase):
             try:
                 result = commands[command]()
                 return await result if asyncio.iscoroutine(result) else result
-            except asyncio.CancelledError:
-                raise
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.error(f"执行命令 {command} 时出错: {e}")
                 return f"命令执行失败: {str(e)}"
         return f"未知命令: {command}"
@@ -353,8 +353,8 @@ class CmdPlugin(PluginBase):
             return self._create_response(
                 f"未知命令: {parts[0]}\n使用 ^help 查看可用命令。"
             )
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
             logger.error(f"处理命令时出错: {e}")
             return self._create_response("命令处理失败，请稍后重试。")

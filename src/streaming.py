@@ -384,9 +384,9 @@ class StreamingClient:
             channel_name, event_data = item
             try:
                 await self._dispatch_event(channel_name, event_data)
-            except asyncio.CancelledError:
-                raise
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.exception(f"处理事件失败: {e}")
 
     async def _dispatch_event(
@@ -480,9 +480,9 @@ class StreamingClient:
                     await handler(data)
                 else:
                     handler(data)
-            except asyncio.CancelledError:
-                raise
             except Exception as e:
+                if isinstance(e, asyncio.CancelledError):
+                    raise
                 logger.exception(f"事件处理器执行失败 ({event_type}): {e}")
 
     def _is_duplicate_event(self, event_id: str | None, event_type: str | None) -> bool:
