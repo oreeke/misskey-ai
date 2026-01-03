@@ -100,9 +100,18 @@ class Config:
 
     def _load_from_file(self, file_path: str) -> str:
         try:
+            project_root = Path(__file__).resolve().parents[1]
             path = Path(file_path)
             if not path.is_absolute():
                 path = Path(self.config_path).parent / path
+            try:
+                resolved = path.resolve()
+            except OSError:
+                logger.debug(f"无法解析配置文件路径: {file_path}")
+                return file_path
+            if not resolved.is_relative_to(project_root):
+                logger.debug(f"禁止从项目目录外读取配置文件: {file_path}")
+                return file_path
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 logger.debug(f"从文件加载配置: {file_path}")
