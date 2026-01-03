@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+_MISSKEY_API_MODULE = ".misskey_api"
+_PLUGIN_MODULE = ".plugin"
+
 __all__ = [
     "MisskeyBot",
     "BotRunner",
@@ -29,17 +32,17 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "BotRuntime": (".runtime", "BotRuntime"),
     "Config": (".config", "Config"),
     "ConfigKeys": (".constants", "ConfigKeys"),
-    "MisskeyAPI": (".misskey_api", "MisskeyAPI"),
-    "MisskeyDrive": (".misskey_api", "MisskeyDrive"),
-    "DriveIO": (".misskey_api", "DriveIO"),
+    "MisskeyAPI": (_MISSKEY_API_MODULE, "MisskeyAPI"),
+    "MisskeyDrive": (_MISSKEY_API_MODULE, "MisskeyDrive"),
+    "DriveIO": (_MISSKEY_API_MODULE, "DriveIO"),
     "OpenAIAPI": (".openai_api", "OpenAIAPI"),
     "StreamingClient": (".streaming", "StreamingClient"),
     "ChannelType": (".streaming", "ChannelType"),
     "PersistenceManager": (".persistence", "PersistenceManager"),
     "ConnectionPool": (".persistence", "ConnectionPool"),
-    "PluginBase": (".plugin", "PluginBase"),
-    "PluginContext": (".plugin", "PluginContext"),
-    "PluginManager": (".plugin", "PluginManager"),
+    "PluginBase": (_PLUGIN_MODULE, "PluginBase"),
+    "PluginContext": (_PLUGIN_MODULE, "PluginContext"),
+    "PluginManager": (_PLUGIN_MODULE, "PluginManager"),
     "TCPClient": (".transport", "TCPClient"),
     "ClientSession": (".transport", "ClientSession"),
 }

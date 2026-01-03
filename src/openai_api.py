@@ -153,10 +153,17 @@ class OpenAIAPI:
 
     @staticmethod
     def _extract_responses_text(response) -> str:
-        text = getattr(response, "output_text", None)
-        if isinstance(text, str) and text:
+        if isinstance((text := getattr(response, "output_text", None)), str) and text:
             return text
-        output = getattr(response, "output", None)
+        parts = OpenAIAPI._collect_responses_output_text(
+            getattr(response, "output", None)
+        )
+        if not parts:
+            raise APIConnectionError()
+        return "".join(parts)
+
+    @staticmethod
+    def _collect_responses_output_text(output: Any) -> list[str]:
         if not isinstance(output, list):
             raise APIConnectionError()
         parts: list[str] = []
@@ -167,14 +174,12 @@ class OpenAIAPI:
             if not isinstance(content, list):
                 continue
             for c in content:
-                if getattr(c, "type", None) != "output_text":
-                    continue
-                t = getattr(c, "text", None)
-                if isinstance(t, str) and t:
-                    parts.append(t)
-        if not parts:
-            raise APIConnectionError()
-        return "".join(parts)
+                if getattr(c, "type", None) == "output_text" and isinstance(
+                    (t := getattr(c, "text", None)), str
+                ):
+                    if t:
+                        parts.append(t)
+        return parts
 
     async def _make_api_request(
         self,

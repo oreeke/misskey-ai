@@ -33,7 +33,7 @@ class BotRunner:
             await self._setup_monitoring_and_signals()
             await self.shutdown_event.wait()
         except asyncio.CancelledError:
-            pass
+            raise
         finally:
             await self.shutdown()
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import aiohttp
+import anyio
 from loguru import logger
 
 from .constants import (
@@ -592,9 +593,9 @@ class MisskeyDrive:
                 if response.status != HTTP_OK:
                     self._api.handle_response_status(response, "drive/files/download")
                     raise APIConnectionError()
-                with dest.open("wb") as f:
+                async with await anyio.open_file(dest, "wb") as f:
                     async for chunk in response.content.iter_chunked(chunk_size):
-                        f.write(chunk)
+                        await f.write(chunk)
         except (aiohttp.ClientError, OSError) as e:
             raise APIConnectionError() from e
         return dest

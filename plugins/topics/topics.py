@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+import anyio
 from loguru import logger
 
 from src.plugin import PluginBase
@@ -77,8 +78,13 @@ class TopicsPlugin(PluginBase):
                 logger.warning(f"主题文件不存在: {topics_file_path}")
                 self._use_default_topics()
                 return
-            with open(topics_file_path, "r", encoding="utf-8") as f:
-                self.topics = [line.strip() for line in f if line.strip()]
+            async with await anyio.open_file(
+                topics_file_path, "r", encoding="utf-8"
+            ) as f:
+                content = await f.read()
+            self.topics = [
+                line.strip() for line in content.splitlines() if line.strip()
+            ]
             if not self.topics:
                 logger.warning("主题文件为空")
                 self._use_default_topics()

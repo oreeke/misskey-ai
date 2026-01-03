@@ -41,6 +41,8 @@ TIMELINE_CHANNELS = frozenset(
     }
 )
 
+_EVENT_DATA_LOG_TEMPLATE = "事件数据: {}"
+
 
 class StreamingClient:
     def __init__(self, instance_url: str, access_token: str):
@@ -408,7 +410,7 @@ class StreamingClient:
         )
         logger.debug(f"数据结构: {list(event_data.keys())}")
         logger.opt(lazy=True).debug(
-            "事件数据: {}",
+            _EVENT_DATA_LOG_TEMPLATE,
             lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
         )
 
@@ -442,7 +444,7 @@ class StreamingClient:
             logger.debug(f"收到未知类型的 main 频道事件: {event_type}")
             logger.debug(f"数据结构: {list(event_data.keys())}")
             logger.opt(lazy=True).debug(
-                "事件数据: {}",
+                _EVENT_DATA_LOG_TEMPLATE,
                 lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
             )
 
@@ -453,7 +455,7 @@ class StreamingClient:
             logger.debug(f"收到未知类型的 {channel_name} 频道事件: {event_type}")
             logger.debug(f"数据结构: {list(event_data.keys())}")
             logger.opt(lazy=True).debug(
-                "事件数据: {}",
+                _EVENT_DATA_LOG_TEMPLATE,
                 lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
             )
             return
@@ -467,7 +469,7 @@ class StreamingClient:
         logger.debug(f"收到 {channel_name} 频道 note")
         logger.debug(f"数据结构: {list(payload.keys())}")
         logger.opt(lazy=True).debug(
-            "事件数据: {}",
+            _EVENT_DATA_LOG_TEMPLATE,
             lambda: json.dumps(payload, ensure_ascii=False, indent=2),
         )
         await self._call_handlers("note", payload)
