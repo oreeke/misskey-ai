@@ -41,7 +41,7 @@ class OpenAIAPI:
                 api_key=self.api_key, base_url=self.api_base, timeout=API_TIMEOUT
             )
             self._initialized = False
-        except (ValueError, TypeError, OSError) as e:
+        except Exception as e:
             logger.error(f"创建 OpenAI API 客户端失败: {e}")
             raise APIConnectionError() from e
 

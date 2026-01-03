@@ -67,6 +67,6 @@ def extract_username(message: dict[str, Any]) -> str:
 def health_check() -> bool:
     try:
         return psutil.Process().is_running()
-    except (OSError, ValueError, AttributeError) as e:
+    except Exception as e:
         logger.error(f"健康检查失败: {e}")
         return False

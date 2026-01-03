@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import aiohttp
@@ -39,12 +40,16 @@ class TCPClient:
         if self.__session and not self.__session.closed:
             try:
                 await self.__session.close()
-            except (OSError, RuntimeError, aiohttp.ClientError) as e:
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
                 logger.warning(f"关闭会话时出错: {e}")
         if self.__connector and not self.__connector.closed:
             try:
                 await self.__connector.close()
-            except (OSError, RuntimeError, aiohttp.ClientError) as e:
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
                 logger.warning(f"关闭连接器时出错: {e}")
         self.__session = self.__connector = None
         if not silent:

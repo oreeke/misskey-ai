@@ -188,7 +188,9 @@ class PersistenceManager:
         try:
             await conn.execute("VACUUM")
             logger.debug("数据库优化完成")
-        except (aiosqlite.Error, OSError) as e:
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
             logger.error(f"数据库优化失败: {e}")
         finally:
             await self._pool.return_connection(conn)

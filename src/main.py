@@ -57,7 +57,7 @@ class BotRunner:
         for sig in signals:
             try:
                 signal.signal(sig, signal_handler)
-            except (OSError, ValueError, NotImplementedError):
+            except Exception:
                 logger.warning(f"无法注册信号处理器: {sig}")
 
     async def shutdown(self) -> None:
@@ -79,7 +79,7 @@ def main() -> int:
     except KeyboardInterrupt:
         try:
             asyncio.run(runner.shutdown())
-        except (OSError, ValueError, TypeError):
+        except Exception:
             logger.exception("关闭时出错")
         return 130
     except (
@@ -99,7 +99,7 @@ def main() -> int:
             logger.exception("启动时发生未处理异常")
         try:
             asyncio.run(runner.shutdown())
-        except (OSError, ValueError, TypeError):
+        except Exception:
             logger.exception("关闭时出错")
         if isinstance(e, ConfigurationError):
             return 2

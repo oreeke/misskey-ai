@@ -263,7 +263,7 @@ class StreamingClient:
     async def _cleanup_failed_connection(self) -> None:
         try:
             await self._close_websocket()
-        except (OSError, ValueError) as e:
+        except Exception as e:
             logger.error(f"清理失败连接时出错: {e}")
 
     async def _disconnect_all_channels(self) -> None:
@@ -272,7 +272,7 @@ class StreamingClient:
                 try:
                     message = {"type": "disconnect", "body": {"id": channel_id}}
                     await self.ws_connection.send_json(message)
-                except (OSError, ValueError) as e:
+                except Exception as e:
                     logger.warning(f"断开频道 {channel_id} 时出错: {e}")
         self.channels.clear()
 
@@ -384,8 +384,8 @@ class StreamingClient:
             channel_name, event_data = item
             try:
                 await self._dispatch_event(channel_name, event_data)
-            except (ValueError, TypeError, AttributeError, KeyError) as e:
-                logger.error(f"处理事件失败: {e}")
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.exception(f"处理事件失败: {e}")
 
@@ -480,8 +480,8 @@ class StreamingClient:
                     await handler(data)
                 else:
                     handler(data)
-            except (ValueError, OSError) as e:
-                logger.error(f"事件处理器执行失败 ({event_type}): {e}")
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.exception(f"事件处理器执行失败 ({event_type}): {e}")
 

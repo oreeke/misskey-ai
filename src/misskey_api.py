@@ -282,12 +282,9 @@ class MisskeyAPI:
             original_note = await self.get_note(reply_id)
             original_visibility = original_note.get("visibility", "public")
             return self._determine_reply_visibility(original_visibility, visibility)
-        except (
-            APIConnectionError,
-            APIRateLimitError,
-            AuthenticationError,
-            ValueError,
-        ) as e:
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
             logger.warning(f"获取原帖可见性失败，使用默认设置: {e}")
             return visibility if visibility is not None else "home"
 

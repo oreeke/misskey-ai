@@ -27,6 +27,16 @@ class PluginBase:
     def __init__(
         self, config_or_context, utils_provider: dict[str, Callable] | None = None
     ):
+        self.persistence_manager = None
+        self.plugin_manager = None
+        self.global_config = None
+        self.misskey = None
+        self.drive = None
+        self.openai = None
+        self.streaming = None
+        self.runtime = None
+        self.bot = None
+        self.utils_provider: dict[str, Callable] = {}
         if isinstance(config_or_context, PluginContext):
             context = config_or_context
             self.config = context.config
@@ -37,13 +47,12 @@ class PluginBase:
                     "config",
                 ):
                     setattr(self, attr_name, getattr(context, attr_name))
-            if not hasattr(self, "utils_provider"):
-                self.utils_provider = {}
-            self._utils = getattr(self, "utils_provider", {})
+            self._utils = self.utils_provider
         else:
             self.config = config_or_context
             self.name = self.__class__.__name__
-            self._utils = utils_provider or {}
+            self.utils_provider = utils_provider or {}
+            self._utils = self.utils_provider
         self.enabled = self.config.get("enabled", False)
         self.priority = self.config.get("priority", 0)
         self._initialized = False
@@ -64,44 +73,39 @@ class PluginBase:
         self._initialized = False
         return False
 
-    @staticmethod
-    async def initialize() -> bool:
+    async def initialize(self) -> bool:
         return True
 
     async def cleanup(self) -> None:
         await self._cleanup_registered_resources()
 
-    @staticmethod
-    async def on_startup() -> None:
-        pass
-
-    @staticmethod
-    async def on_mention(_mention_data: dict[str, Any]) -> dict[str, Any] | None:
+    async def on_startup(self) -> None:
         return None
 
-    @staticmethod
-    async def on_message(_message_data: dict[str, Any]) -> dict[str, Any] | None:
+    async def on_mention(self, _mention_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    @staticmethod
-    async def on_reaction(_reaction_data: dict[str, Any]) -> dict[str, Any] | None:
+    async def on_message(self, _message_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    @staticmethod
-    async def on_follow(_follow_data: dict[str, Any]) -> dict[str, Any] | None:
+    async def on_reaction(
+        self, _reaction_data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         return None
 
-    @staticmethod
-    async def on_timeline_note(_note_data: dict[str, Any]) -> dict[str, Any] | None:
+    async def on_follow(self, _follow_data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
-    @staticmethod
-    async def on_auto_post() -> dict[str, Any] | None:
+    async def on_timeline_note(
+        self, _note_data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         return None
 
-    @staticmethod
-    async def on_shutdown() -> None:
-        pass
+    async def on_auto_post(self) -> dict[str, Any] | None:
+        return None
+
+    async def on_shutdown(self) -> None:
+        return None
 
     def get_info(self) -> dict[str, Any]:
         return {
@@ -149,7 +153,9 @@ class PluginBase:
                         await method()
                     else:
                         method()
-            except (AttributeError, TypeError, OSError) as e:
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
                 logger.error(f"插件 {self.name} 清理资源失败: {e}")
         self._resources_to_cleanup.clear()
 
@@ -200,7 +206,7 @@ class PluginManager:
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
-        except (OSError, yaml.YAMLError, UnicodeDecodeError) as e:
+        except Exception as e:
             logger.error(f"加载插件 {plugin_dir.name} 配置文件时出错: {e}")
             return {}
 
@@ -224,7 +230,7 @@ class PluginManager:
             self.plugins[plugin_dir.name] = plugin_instance
             status = "启用" if plugin_instance.enabled else "禁用"
             logger.debug(f"已发现插件: {plugin_dir.name} (状态: {status})")
-        except (ImportError, AttributeError, OSError) as e:
+        except Exception as e:
             logger.error(f"加载插件 {plugin_dir.name} 失败: {e}")
 
     @staticmethod
@@ -296,8 +302,10 @@ class PluginManager:
                 else:
                     logger.warning(f"插件 {plugin.name} 初始化失败")
                     plugin.set_enabled(False)
-            except (ValueError, OSError) as e:
-                logger.error(f"初始化插件 {plugin.name} 时出错: {e}")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.exception(f"初始化插件 {plugin.name} 时出错: {e}")
                 plugin.set_enabled(False)
 
     async def cleanup_plugins(self) -> None:
@@ -305,8 +313,10 @@ class PluginManager:
             if plugin.enabled:
                 try:
                     await plugin.cleanup()
-                except (ValueError, OSError) as e:
-                    logger.error(f"清理插件 {plugin.name} 时出错: {e}")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.exception(f"清理插件 {plugin.name} 时出错: {e}")
 
     async def on_startup(self) -> None:
         await self.call_plugin_hook("on_startup")
@@ -354,8 +364,8 @@ class PluginManager:
                         and result.get("handled") is True
                     ):
                         break
-            except (ValueError, OSError) as e:
-                logger.error(f"调用插件 {plugin.name} 的 {hook_name} hook 时出错: {e}")
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.exception(
                     f"调用插件 {plugin.name} 的 {hook_name} hook 时发生未处理异常: {e}"
