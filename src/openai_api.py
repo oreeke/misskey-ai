@@ -1,5 +1,6 @@
 import asyncio
 from typing import Any
+from urllib.parse import urlparse
 
 import openai
 from loguru import logger
@@ -9,6 +10,7 @@ from openai import (
     APITimeoutError,
     AuthenticationError as OpenAIAuthenticationError,
     BadRequestError,
+    NotFoundError,
     RateLimitError,
     Timeout,
 )
@@ -31,10 +33,12 @@ class OpenAIAPI:
         api_key: str,
         model: str = "deepseek-chat",
         api_base: str = "https://api.openai.com/v1",
+        api_mode: str | None = None,
     ):
         self.api_key = api_key
         self.model = model
-        self.api_base = api_base
+        self.api_base = api_base.strip().strip("`")
+        self.api_mode = (api_mode or "auto").strip().lower()
         self._semaphore = asyncio.Semaphore(OPENAI_MAX_CONCURRENCY)
         try:
             self.client = openai.AsyncOpenAI(
@@ -81,6 +85,97 @@ class OpenAIAPI:
             logger.error(f"API 响应数据格式错误: {e}")
             raise ValueError() from e
 
+    def _should_use_responses(self) -> bool:
+        if self.api_mode == "responses":
+            return True
+        if self.api_mode == "chat":
+            return False
+        base = (self.api_base or "").strip().lower()
+        parsed = urlparse(base if "://" in base else f"https://{base}")
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+        if host in {"api.openai.com", "api.x.ai"}:
+            return True
+        if port == 11434:
+            return True
+        return False
+
+    async def _call_api(
+        self,
+        messages: list[dict[str, Any]],
+        max_tokens: int | None,
+        temperature: float | None,
+        call_type: str,
+    ) -> str:
+        if not self._should_use_responses():
+            return await self._call_api_common(
+                messages, max_tokens, temperature, call_type
+            )
+        try:
+            response = await self._make_responses_request(
+                messages, max_tokens, temperature
+            )
+            text = self._extract_responses_text(response)
+            logger.debug(f"OpenAI API {call_type}调用成功，生成内容长度: {len(text)}")
+            return text
+        except OpenAIAuthenticationError as e:
+            logger.error(f"API 认证失败: {e}")
+            raise AuthenticationError() from e
+        except (NotFoundError, BadRequestError) as e:
+            if self.api_mode != "auto":
+                raise
+            logger.warning(f"Responses API 不可用，回退到 Chat Completions: {e}")
+            return await self._call_api_common(
+                messages, max_tokens, temperature, call_type
+            )
+        except (ValueError, TypeError, KeyError) as e:
+            logger.error(f"API 响应数据格式错误: {e}")
+            raise ValueError() from e
+
+    async def _make_responses_request(
+        self,
+        messages: list[dict[str, Any]],
+        max_tokens: int | None,
+        temperature: float | None,
+    ):
+        async with self._semaphore:
+            kwargs: dict[str, Any] = {
+                "model": self.model,
+                "input": messages,
+                "temperature": temperature,
+            }
+            if max_tokens is not None:
+                kwargs["max_output_tokens"] = max_tokens
+            return await asyncio.wait_for(
+                self.client.responses.create(**kwargs),
+                timeout=REQUEST_TIMEOUT,
+            )
+
+    @staticmethod
+    def _extract_responses_text(response) -> str:
+        text = getattr(response, "output_text", None)
+        if isinstance(text, str) and text:
+            return text
+        output = getattr(response, "output", None)
+        if not isinstance(output, list):
+            raise APIConnectionError()
+        parts: list[str] = []
+        for item in output:
+            if getattr(item, "type", None) != "message":
+                continue
+            content = getattr(item, "content", None)
+            if not isinstance(content, list):
+                continue
+            for c in content:
+                if getattr(c, "type", None) != "output_text":
+                    continue
+                t = getattr(c, "text", None)
+                if isinstance(t, str) and t:
+                    parts.append(t)
+        if not parts:
+            raise APIConnectionError()
+        return "".join(parts)
+
     async def _make_api_request(
         self,
         messages: list[dict[str, Any]],
@@ -88,13 +183,18 @@ class OpenAIAPI:
         temperature: float | None,
     ):
         async with self._semaphore:
+            kwargs: dict[str, Any] = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature,
+            }
+            if max_tokens is not None:
+                if "openai.com" in self.api_base:
+                    kwargs["max_completion_tokens"] = max_tokens
+                else:
+                    kwargs["max_tokens"] = max_tokens
             return await asyncio.wait_for(
-                self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                ),
+                self.client.chat.completions.create(**kwargs),
                 timeout=REQUEST_TIMEOUT,
             )
 
@@ -138,9 +238,7 @@ class OpenAIAPI:
         temperature: float | None = None,
     ) -> str:
         messages = self._build_messages(prompt, system_prompt)
-        return await self._call_api_common(
-            messages, max_tokens, temperature, "单轮文本"
-        )
+        return await self._call_api(messages, max_tokens, temperature, "单轮文本")
 
     async def generate_chat(
         self,
@@ -148,6 +246,4 @@ class OpenAIAPI:
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> str:
-        return await self._call_api_common(
-            messages, max_tokens, temperature, "多轮对话"
-        )
+        return await self._call_api(messages, max_tokens, temperature, "多轮对话")

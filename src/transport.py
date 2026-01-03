@@ -30,7 +30,7 @@ class TCPClient:
         if self.__session is None or self.__session.closed:
             self.__session = aiohttp.ClientSession(
                 headers=self._default_headers,
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT, connect=10),
+                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT, connect=API_TIMEOUT),
                 connector=self._connector,
                 connector_owner=True,
             )

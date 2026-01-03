@@ -48,6 +48,7 @@ class Config:
             "OPENAI_API_KEY": (ConfigKeys.OPENAI_API_KEY, str),
             "OPENAI_MODEL": (ConfigKeys.OPENAI_MODEL, str),
             "OPENAI_API_BASE": (ConfigKeys.OPENAI_API_BASE, str),
+            "OPENAI_API_MODE": (ConfigKeys.OPENAI_API_MODE, str),
             "OPENAI_MAX_TOKENS": (ConfigKeys.OPENAI_MAX_TOKENS, int),
             "OPENAI_TEMPERATURE": (ConfigKeys.OPENAI_TEMPERATURE, float),
             "BOT_SYSTEM_PROMPT": (ConfigKeys.BOT_SYSTEM_PROMPT, str),
@@ -157,6 +158,7 @@ class Config:
             ConfigKeys.OPENAI_API_KEY: None,
             ConfigKeys.OPENAI_MODEL: "deepseek-chat",
             ConfigKeys.OPENAI_API_BASE: "https://api.deepseek.com/v1",
+            ConfigKeys.OPENAI_API_MODE: "auto",
             ConfigKeys.OPENAI_MAX_TOKENS: 1000,
             ConfigKeys.OPENAI_TEMPERATURE: 0.8,
             ConfigKeys.BOT_SYSTEM_PROMPT: None,
@@ -204,6 +206,7 @@ class Config:
         require_type(ConfigKeys.OPENAI_API_KEY, (str,), "OpenAI API 密钥")
         require_type(ConfigKeys.OPENAI_MODEL, (str,), "OpenAI 模型名称")
         require_type(ConfigKeys.OPENAI_API_BASE, (str,), "OpenAI API 端点")
+        mode = require_type(ConfigKeys.OPENAI_API_MODE, (str,), "OpenAI API 模式")
         require_type(ConfigKeys.BOT_AUTO_POST_ENABLED, (bool,), "自动发帖开关")
         require_type(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED, (bool,), "提及响应开关")
         require_type(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED, (bool,), "聊天响应开关")
@@ -215,6 +218,13 @@ class Config:
         require_type(ConfigKeys.DB_PATH, (str,), "数据库路径")
         require_type(ConfigKeys.LOG_PATH, (str,), "日志路径")
         require_type(ConfigKeys.LOG_LEVEL, (str,), "日志级别")
+
+        if mode is not None and mode.strip().lower() not in {
+            "auto",
+            "chat",
+            "responses",
+        }:
+            raise ConfigurationError("OpenAI API 模式必须是 auto/chat/responses")
 
         max_tokens = require_type(
             ConfigKeys.OPENAI_MAX_TOKENS, (int,), "最大生成 token 数"

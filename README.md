@@ -66,6 +66,7 @@ openai:
   api_key: "your_api_key_here"                      # OpenAI API 密钥
   model: "deepseek-chat"                            # 使用的模型名称
   api_base: "https://api.deepseek.com/v1"           # OpenAI API 端点
+  api_mode: "auto"                                  # auto/chat/responses
   max_tokens: 1000                                  # 最大生成 token 数
   temperature: 0.8                                  # 温度参数
 
@@ -148,6 +149,7 @@ MISSKEY_ACCESS_TOKEN=your_access_token_here                # Misskey 访问令�
 OPENAI_API_KEY=your_api_key_here                           # OpenAI API 密钥
 OPENAI_MODEL=deepseek-chat                                 # 使用的模型名称
 OPENAI_API_BASE=https://api.deepseek.com/v1                # OpenAI API 端点
+OPENAI_API_MODE=auto                                       # auto/chat/responses
 OPENAI_MAX_TOKENS=1000                                     # OpenAI 最大生成 token 数
 OPENAI_TEMPERATURE=0.8                                     # OpenAI 温度参数
 BOT_SYSTEM_PROMPT=你是一个可爱的AI助手...                    # 系统提示词（支持文件导入："prompts/*.txt"，"file://path/to/*.txt"）

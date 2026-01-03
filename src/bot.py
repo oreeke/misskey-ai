@@ -431,6 +431,7 @@ class MisskeyBot:
                 config.get_required(ConfigKeys.OPENAI_API_KEY),
                 config.get(ConfigKeys.OPENAI_MODEL),
                 config.get(ConfigKeys.OPENAI_API_BASE),
+                config.get(ConfigKeys.OPENAI_API_MODE),
             )
             self.scheduler = AsyncIOScheduler()
         except (ValueError, TypeError, KeyError) as e:

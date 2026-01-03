@@ -4,6 +4,7 @@ class ConfigKeys:
     OPENAI_API_KEY = "openai.api_key"
     OPENAI_MODEL = "openai.model"
     OPENAI_API_BASE = "openai.api_base"
+    OPENAI_API_MODE = "openai.api_mode"
     OPENAI_MAX_TOKENS = "openai.max_tokens"
     OPENAI_TEMPERATURE = "openai.temperature"
     BOT_SYSTEM_PROMPT = "bot.system_prompt"

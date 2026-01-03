@@ -9,6 +9,7 @@ openai:
   api_key: "your_api_key_here"                      # OpenAI API 密钥
   model: "deepseek-chat"                            # 使用的模型名称
   api_base: "https://api.deepseek.com/v1"           # OpenAI API 端点
+  api_mode: "auto"                                  # auto/chat/responses
   max_tokens: 1000                                  # 最大生成 token 数
   temperature: 0.8                                  # 温度参数
 
