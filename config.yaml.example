@@ -30,6 +30,7 @@ bot:
     interval_minutes: 180                           # 发帖间隔（分钟）
     max_posts_per_day: 8                            # 每日最大发帖数量（凌晨 0 点重置计数器）
     visibility: "public"                            # 发帖可见性（public/home/followers）
+    local_only: false                               # 是否禁用联合（仅本地可见）
     prompt: |                                       # 发帖提示词
       生成一篇有趣、有见解的社交媒体帖子。
 
@@ -40,3 +41,4 @@ bot:
 
 log:
   level: "INFO"                                     # 日志级别 (DEBUG/INFO/WARNING/ERROR)
+  dump_events: false                                # 是否输出事件原始数据（DEBUG）

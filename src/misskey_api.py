@@ -296,6 +296,7 @@ class MisskeyAPI:
         text: str,
         visibility: str | None = None,
         reply_id: str | None = None,
+        local_only: bool | None = None,
         validate_reply: bool = True,
     ) -> dict[str, Any]:
         if reply_id and validate_reply and not await self.note_exists(reply_id):
@@ -310,6 +311,8 @@ class MisskeyAPI:
         data = {"text": text, "visibility": visibility}
         if reply_id:
             data["replyId"] = reply_id
+        if local_only:
+            data["localOnly"] = True
         result = await self.make_request("notes/create", data)
         logger.debug(
             f"Misskey note created: note_id={result.get('createdNote', {}).get('id', 'unknown')}"

@@ -58,6 +58,7 @@ class Config:
             "BOT_AUTO_POST_INTERVAL": (ConfigKeys.BOT_AUTO_POST_INTERVAL, int),
             "BOT_AUTO_POST_MAX_PER_DAY": (ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY, int),
             "BOT_AUTO_POST_VISIBILITY": (ConfigKeys.BOT_AUTO_POST_VISIBILITY, str),
+            "BOT_AUTO_POST_LOCAL_ONLY": (ConfigKeys.BOT_AUTO_POST_LOCAL_ONLY, bool),
             "BOT_AUTO_POST_PROMPT": (ConfigKeys.BOT_AUTO_POST_PROMPT, str),
             "BOT_RESPONSE_MENTION_ENABLED": (
                 ConfigKeys.BOT_RESPONSE_MENTION_ENABLED,
@@ -73,6 +74,7 @@ class Config:
             "DB_PATH": (ConfigKeys.DB_PATH, str),
             "LOG_PATH": (ConfigKeys.LOG_PATH, str),
             "LOG_LEVEL": (ConfigKeys.LOG_LEVEL, str),
+            "LOG_DUMP_EVENTS": (ConfigKeys.LOG_DUMP_EVENTS, bool),
         }
         for env_key, (config_path, value_type) in env_mappings.items():
             if env_value := os.environ.get(env_key):
@@ -172,6 +174,7 @@ class Config:
             ConfigKeys.BOT_AUTO_POST_INTERVAL: 180,
             ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY: 8,
             ConfigKeys.BOT_AUTO_POST_VISIBILITY: "public",
+            ConfigKeys.BOT_AUTO_POST_LOCAL_ONLY: False,
             ConfigKeys.BOT_AUTO_POST_PROMPT: None,
             ConfigKeys.BOT_RESPONSE_MENTION_ENABLED: True,
             ConfigKeys.BOT_RESPONSE_CHAT_ENABLED: True,
@@ -184,6 +187,7 @@ class Config:
             ConfigKeys.DB_PATH: "data/misskey_ai.db",
             ConfigKeys.LOG_PATH: "logs/misskey_ai.log",
             ConfigKeys.LOG_LEVEL: "INFO",
+            ConfigKeys.LOG_DUMP_EVENTS: False,
         }
         return builtin_defaults.get(key)
 
@@ -225,6 +229,7 @@ class Config:
             (ConfigKeys.OPENAI_MODEL, (str,), "OpenAI model"),
             (ConfigKeys.OPENAI_API_BASE, (str,), "OpenAI API base URL"),
             (ConfigKeys.BOT_AUTO_POST_ENABLED, (bool,), "auto-post enabled"),
+            (ConfigKeys.BOT_AUTO_POST_LOCAL_ONLY, (bool,), "auto-post localOnly"),
             (
                 ConfigKeys.BOT_RESPONSE_MENTION_ENABLED,
                 (bool,),
@@ -255,6 +260,7 @@ class Config:
             (ConfigKeys.DB_PATH, (str,), "database path"),
             (ConfigKeys.LOG_PATH, (str,), "log path"),
             (ConfigKeys.LOG_LEVEL, (str,), "log level"),
+            (ConfigKeys.LOG_DUMP_EVENTS, (bool,), "event dump enabled"),
         ):
             self._require_type(key, types, desc)
 

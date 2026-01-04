@@ -12,6 +12,7 @@ class ConfigKeys:
     BOT_AUTO_POST_INTERVAL = "bot.auto_post.interval_minutes"
     BOT_AUTO_POST_MAX_PER_DAY = "bot.auto_post.max_posts_per_day"
     BOT_AUTO_POST_VISIBILITY = "bot.auto_post.visibility"
+    BOT_AUTO_POST_LOCAL_ONLY = "bot.auto_post.local_only"
     BOT_AUTO_POST_PROMPT = "bot.auto_post.prompt"
     BOT_RESPONSE_MENTION_ENABLED = "bot.response.mention_enabled"
     BOT_RESPONSE_CHAT_ENABLED = "bot.response.chat_enabled"
@@ -24,6 +25,7 @@ class ConfigKeys:
     DB_PATH = "db.path"
     LOG_PATH = "log.path"
     LOG_LEVEL = "log.level"
+    LOG_DUMP_EVENTS = "log.dump_events"
 
 
 HTTP_OK = 200

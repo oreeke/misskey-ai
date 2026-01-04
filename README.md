@@ -87,6 +87,7 @@ bot:
     interval_minutes: 180                           # 发帖间隔（分钟）
     max_posts_per_day: 8                            # 每日最大发帖数量（凌晨 0 点重置计数器）
     visibility: "public"                            # 发帖可见性（public/home/followers）
+    local_only: false                               # 是否禁用联合（仅本地可见）
     prompt: |                                       # 发帖提示词
       生成一篇有趣、有见解的社交媒体帖子。
 
@@ -97,6 +98,7 @@ bot:
 
 log:
   level: "INFO"                                     # 日志级别 (DEBUG/INFO/WARNING/ERROR)
+  dump_events: false                                # 是否输出事件原始数据（DEBUG）
 ```
 </details>
 
@@ -157,6 +159,7 @@ BOT_AUTO_POST_ENABLED=true                                 # 是否启用自动�
 BOT_AUTO_POST_INTERVAL=180                                 # 发帖间隔（分钟）
 BOT_AUTO_POST_MAX_PER_DAY=8                                # 每日最大发帖数量（凌晨 0 点重置计数器）
 BOT_AUTO_POST_VISIBILITY=public                            # 发帖可见性（public/home/followers）
+BOT_AUTO_POST_LOCAL_ONLY=false                             # 是否禁用联合（仅本地可见）
 BOT_AUTO_POST_PROMPT=生成一篇有趣、有见解的社交媒体帖子。      # 发帖提示词
 BOT_RESPONSE_MENTION_ENABLED=true                          # 是否响应提及（@）
 BOT_RESPONSE_CHAT_ENABLED=true                             # 是否响应聊天
@@ -167,6 +170,7 @@ BOT_TIMELINE_LOCAL=false                                   # localTimeline
 BOT_TIMELINE_HYBRID=false                                  # hybridTimeline
 BOT_TIMELINE_GLOBAL=false                                  # globalTimeline
 LOG_LEVEL=INFO                                             # 日志级别 (DEBUG/INFO/WARNING/ERROR)
+LOG_DUMP_EVENTS=false                                      # 是否输出事件原始数据（DEBUG）
 ```
 </details>
 
@@ -178,5 +182,4 @@ docker compose up -d
 > [!TIP]
 >
 > - 自动发帖会尽量绕过 [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)，想让帖子更多样化请配置并启用 [Topics](./plugins/topics) 插件<br>
-> - 切换模型仅需修改 `api_key` `model` `api_base`，相同 `api_base` 的模型可通过 [Cmd](./plugins/cmd) 实时切换<br>
-> - 如果实例已有大量联合或中继，订阅 `globalTimeline` 时，非必要请勿将日志级别设置为 `DEBUG`
+> - 切换模型仅需修改 `api_key` `model` `api_base`，相同 `api_base` 的模型可通过 [Cmd](./plugins/cmd) 实时切换

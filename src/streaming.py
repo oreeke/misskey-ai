@@ -45,11 +45,14 @@ _EVENT_DATA_LOG_TEMPLATE = "Event data: {}"
 
 
 class StreamingClient:
-    def __init__(self, instance_url: str, access_token: str):
+    def __init__(
+        self, instance_url: str, access_token: str, *, log_dump_events: bool = False
+    ):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
         self.ws_connection: aiohttp.ClientWebSocketResponse | None = None
         self.transport = ClientSession
+        self.log_dump_events = log_dump_events
         self.channels: dict[str, dict[str, Any]] = {}
         self.event_handlers: dict[str, list[Callable]] = {}
         self.processed_events = TTLCache(
@@ -405,23 +408,23 @@ class StreamingClient:
     ) -> None:
         event_type = event_data.get("type")
         if not event_type:
-            await self._handle_no_event_type(channel_name, event_data)
+            self._handle_no_event_type(channel_name, event_data)
         else:
             await self._handle_typed_event(channel_name, event_type, event_data)
 
-    @staticmethod
-    async def _handle_no_event_type(
-        channel_name: str, event_data: dict[str, Any]
+    def _handle_no_event_type(
+        self, channel_name: str, event_data: dict[str, Any]
     ) -> None:
         event_id = event_data.get("id", "unknown")
         logger.debug(
             f"Received data without event type - channel: {channel_name}, event_id={event_id}"
         )
         logger.debug(f"Schema: {list(event_data.keys())}")
-        logger.opt(lazy=True).debug(
-            _EVENT_DATA_LOG_TEMPLATE,
-            lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
-        )
+        if self.log_dump_events:
+            logger.opt(lazy=True).debug(
+                _EVENT_DATA_LOG_TEMPLATE,
+                lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
+            )
 
     async def _handle_typed_event(
         self,
@@ -452,10 +455,11 @@ class StreamingClient:
         else:
             logger.debug(f"Unknown main channel event type: {event_type}")
             logger.debug(f"Schema: {list(event_data.keys())}")
-            logger.opt(lazy=True).debug(
-                _EVENT_DATA_LOG_TEMPLATE,
-                lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
-            )
+            if self.log_dump_events:
+                logger.opt(lazy=True).debug(
+                    _EVENT_DATA_LOG_TEMPLATE,
+                    lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
+                )
 
     async def _handle_timeline_channel_event(
         self, channel_name: str, event_type: str, event_data: dict[str, Any]
@@ -463,10 +467,11 @@ class StreamingClient:
         if event_type != "note":
             logger.debug(f"Unknown {channel_name} channel event type: {event_type}")
             logger.debug(f"Schema: {list(event_data.keys())}")
-            logger.opt(lazy=True).debug(
-                _EVENT_DATA_LOG_TEMPLATE,
-                lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
-            )
+            if self.log_dump_events:
+                logger.opt(lazy=True).debug(
+                    _EVENT_DATA_LOG_TEMPLATE,
+                    lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
+                )
             return
         payload = event_data.get("body")
         if not isinstance(payload, dict):
@@ -477,10 +482,11 @@ class StreamingClient:
             payload["streamingChannel"] = channel_name
         logger.debug(f"Received {channel_name} note")
         logger.debug(f"Schema: {list(payload.keys())}")
-        logger.opt(lazy=True).debug(
-            _EVENT_DATA_LOG_TEMPLATE,
-            lambda: json.dumps(payload, ensure_ascii=False, indent=2),
-        )
+        if self.log_dump_events:
+            logger.opt(lazy=True).debug(
+                _EVENT_DATA_LOG_TEMPLATE,
+                lambda: json.dumps(payload, ensure_ascii=False, indent=2),
+            )
         await self._call_handlers("note", payload)
 
     async def _call_handlers(self, event_type: str, data: dict[str, Any]) -> None:

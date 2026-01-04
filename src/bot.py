@@ -77,10 +77,11 @@ class MentionHandler:
     def _parse(self, note: dict[str, Any]) -> MentionContext:
         try:
             is_reply_event = note.get("type") == "reply" and "note" in note
-            logger.opt(lazy=True).debug(
-                "Mention data: {}",
-                lambda: json.dumps(note, ensure_ascii=False, indent=2),
-            )
+            if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
+                logger.opt(lazy=True).debug(
+                    "Mention data: {}",
+                    lambda: json.dumps(note, ensure_ascii=False, indent=2),
+                )
             mention_id = note.get("id")
             reply_target_id = note.get("note", {}).get("id")
             if is_reply_event:
@@ -157,10 +158,11 @@ class ChatHandler:
             return
         if self.bot.bot_user_id and extract_user_id(message) == self.bot.bot_user_id:
             return
-        logger.opt(lazy=True).debug(
-            "Chat data: {}",
-            lambda: json.dumps(message, ensure_ascii=False, indent=2),
-        )
+        if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
+            logger.opt(lazy=True).debug(
+                "Chat data: {}",
+                lambda: json.dumps(message, ensure_ascii=False, indent=2),
+            )
         try:
             await self._process(message)
         except Exception as e:
@@ -377,10 +379,11 @@ class ReactionHandler:
         note_id = reaction.get("note", {}).get("id", "unknown")
         reaction_type = reaction.get("reaction", "unknown")
         logger.info(f"User @{username} reacted to note {note_id}: {reaction_type}")
-        logger.opt(lazy=True).debug(
-            "Reaction data: {}",
-            lambda: json.dumps(reaction, ensure_ascii=False, indent=2),
-        )
+        if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
+            logger.opt(lazy=True).debug(
+                "Reaction data: {}",
+                lambda: json.dumps(reaction, ensure_ascii=False, indent=2),
+            )
         try:
             await self.bot.plugin_manager.on_reaction(reaction)
         except Exception as e:
@@ -396,10 +399,11 @@ class FollowHandler:
     async def handle(self, follow: dict[str, Any]) -> None:
         username = extract_username(follow)
         logger.info(f"User @{username} followed @{self.bot.bot_username}")
-        logger.opt(lazy=True).debug(
-            "Follow data: {}",
-            lambda: json.dumps(follow, ensure_ascii=False, indent=2),
-        )
+        if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
+            logger.opt(lazy=True).debug(
+                "Follow data: {}",
+                lambda: json.dumps(follow, ensure_ascii=False, indent=2),
+            )
         try:
             await self.bot.plugin_manager.on_follow(follow)
         except Exception as e:
@@ -414,21 +418,24 @@ class AutoPostService:
 
     async def run(self) -> None:
         max_posts = self.bot.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
+        local_only = self.bot.config.get(ConfigKeys.BOT_AUTO_POST_LOCAL_ONLY)
         if not self.bot.runtime.running or not self.bot.runtime.check_post_counter(
             max_posts
         ):
             return
         try:
             plugin_results = await self.bot.plugin_manager.on_auto_post()
-            if await self._try_plugin_post(plugin_results, max_posts):
+            if await self._try_plugin_post(plugin_results, max_posts, local_only):
                 return
-            await self._generate_ai_post(plugin_results, max_posts)
+            await self._generate_ai_post(plugin_results, max_posts, local_only)
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
             logger.error(f"Error during auto-post: {e}")
 
-    async def _try_plugin_post(self, plugin_results: list[Any], max_posts: int) -> bool:
+    async def _try_plugin_post(
+        self, plugin_results: list[Any], max_posts: int, local_only: bool | None
+    ) -> bool:
         for result in plugin_results:
             if result and result.get("content"):
                 content = result.get("content")
@@ -436,7 +443,9 @@ class AutoPostService:
                     "visibility",
                     self.bot.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY),
                 )
-                await self.bot.misskey.create_note(content, visibility=visibility)
+                await self.bot.misskey.create_note(
+                    content, visibility=visibility, local_only=local_only
+                )
                 self.bot.runtime.post_count()
                 logger.info(f"Auto-post succeeded: {self.bot.format_log_text(content)}")
                 logger.info(
@@ -446,7 +455,7 @@ class AutoPostService:
         return False
 
     async def _generate_ai_post(
-        self, plugin_results: list[Any], max_posts: int
+        self, plugin_results: list[Any], max_posts: int, local_only: bool | None
     ) -> None:
         plugin_prompt = ""
         timestamp_override = None
@@ -468,7 +477,9 @@ class AutoPostService:
             logger.warning(f"Auto-post failed; skipping this run: {e}")
             return
         visibility = self.bot.config.get(ConfigKeys.BOT_AUTO_POST_VISIBILITY)
-        await self.bot.misskey.create_note(content, visibility=visibility)
+        await self.bot.misskey.create_note(
+            content, visibility=visibility, local_only=local_only
+        )
         self.bot.runtime.post_count()
         logger.info(f"Auto-post succeeded: {self.bot.format_log_text(content)}")
         logger.info(f"Daily post count: {self.bot.runtime.posts_today}/{max_posts}")
@@ -526,7 +537,11 @@ class MisskeyBot:
             instance_url = config.get_required(ConfigKeys.MISSKEY_INSTANCE_URL)
             access_token = config.get_required(ConfigKeys.MISSKEY_ACCESS_TOKEN)
             self.misskey = MisskeyAPI(instance_url, access_token)
-            self.streaming = StreamingClient(instance_url, access_token)
+            self.streaming = StreamingClient(
+                instance_url,
+                access_token,
+                log_dump_events=bool(config.get(ConfigKeys.LOG_DUMP_EVENTS)),
+            )
             self.openai = OpenAIAPI(
                 config.get_required(ConfigKeys.OPENAI_API_KEY),
                 config.get(ConfigKeys.OPENAI_MODEL),

@@ -25,7 +25,13 @@ class BotRunner:
         await config.load()
         log_path = Path(config.get(ConfigKeys.LOG_PATH))
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.add(log_path, level=config.get(ConfigKeys.LOG_LEVEL))
+        logger.add(
+            log_path,
+            level=config.get(ConfigKeys.LOG_LEVEL),
+            rotation="10 MB",
+            compression="zip",
+            enqueue=True,
+        )
         logger.info("Starting bot...")
         try:
             self.bot = MisskeyBot(config)
