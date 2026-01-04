@@ -49,6 +49,10 @@ class RadarPlugin(PluginBase):
             self.config.get("include_bot_users", self.config.get("include_bot_user")),
             False,
         )
+        self.include_replies = self._parse_bool(
+            self.config.get("include_replies", self.config.get("include_reply")),
+            False,
+        )
         self.reaction = self._normalize_str(self.config.get("reaction"))
         self.reply_enabled = self._parse_bool(self.config.get("reply_enabled"), False)
         self.reply_text = self._normalize_str(self.config.get("reply_text"))
@@ -283,6 +287,20 @@ class RadarPlugin(PluginBase):
         t = text if self.keyword_case_sensitive else text.lower()
         return any(all(token in t for token in group) for group in groups)
 
+    @staticmethod
+    def _is_reply_note(note: dict[str, Any]) -> bool:
+        if isinstance(note.get("replyId"), str) and note["replyId"].strip():
+            return True
+        if isinstance(note.get("reply_id"), str) and note["reply_id"].strip():
+            return True
+        return isinstance(note.get("reply"), dict)
+
+    def _has_reply_in_chain(self, note: dict[str, Any]) -> bool:
+        if self._is_reply_note(note):
+            return True
+        renote = note.get("renote")
+        return isinstance(renote, dict) and self._has_reply_in_chain(renote)
+
     def _should_skip_self(self, note: dict[str, Any], variants: set[str]) -> bool:
         if not self.skip_self or not hasattr(self, "bot"):
             return False
@@ -306,6 +324,8 @@ class RadarPlugin(PluginBase):
 
     def _should_process(self, note: dict[str, Any]) -> bool:
         if not self.has_any_filter:
+            return False
+        if not self.include_replies and self._has_reply_in_chain(note):
             return False
         variants = self._extract_user_variants(note)
         if self._should_skip_self(note, variants):

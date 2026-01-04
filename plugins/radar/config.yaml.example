@@ -17,6 +17,7 @@ exclude_keywords: |              # 排除关键词（可为空），同上；与
 
 allow_attachments: true          # 是否允许“含附件”的帖子参与匹配
 include_bot_users: false         # 是否包含“其他机器人用户”的帖子
+include_replies: false           # 是否包含“回复帖”
 keyword_case_sensitive: false    # 关键词是否区分大小写
 
 reaction: ""                     # 反应（例如 "heart"/":emoji:"）；留空表示不反应
