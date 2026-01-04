@@ -382,6 +382,20 @@ class MisskeyAPI:
             data["sinceId"] = since_id
         return await self.make_request("chat/messages/user-timeline", data)
 
+    async def get_room_messages(
+        self, room_id: str, limit: int = 10, since_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        data = {"roomId": room_id, "limit": limit}
+        if since_id:
+            data["sinceId"] = since_id
+        try:
+            return await self.make_request("chat/messages/room-timeline", data)
+        except APIBadRequestError:
+            data = {"toRoomId": room_id, "limit": limit}
+            if since_id:
+                data["sinceId"] = since_id
+            return await self.make_request("chat/messages/room-timeline", data)
+
 
 class MisskeyDrive:
     def __init__(self, api: MisskeyAPI):

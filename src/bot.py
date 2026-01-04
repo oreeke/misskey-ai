@@ -332,13 +332,21 @@ class ChatHandler:
         room_id: str | None,
     ) -> None:
         limit = self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
-        history = await self.bot.get_or_load_chat_history(conversation_id, limit=limit)
+        history = await self.bot.get_or_load_chat_history(
+            conversation_id, limit=limit, user_id=user_id, room_id=room_id
+        )
         messages: list[dict[str, str]] = []
         if self.bot.system_prompt:
             messages.append({"role": "system", "content": self.bot.system_prompt})
         messages.extend(history)
         user_content = f"{username}: {text}" if room_id else text
-        messages.append({"role": "user", "content": user_content})
+        last = next(reversed(history), None)
+        if not (
+            isinstance(last, dict)
+            and last.get("role") == "user"
+            and last.get("content") == user_content
+        ):
+            messages.append({"role": "user", "content": user_content})
         reply = await self.bot.openai.generate_chat(messages, **self.bot.ai_config)
         logger.debug("生成聊天回复成功")
         await self._send_chat_reply(user_id=user_id, room_id=room_id, text=reply)
@@ -346,23 +354,54 @@ class ChatHandler:
         self.bot.append_chat_turn(conversation_id, user_content, reply, limit)
 
     async def get_chat_history(
-        self, user_id: str, limit: int | None = None
+        self,
+        *,
+        user_id: str | None = None,
+        room_id: str | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, str]]:
         try:
             limit = limit or self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
-            messages = await self.bot.misskey.get_messages(user_id, limit=limit)
-            return [
-                {
-                    "role": "user" if msg.get("userId") == user_id else "assistant",
-                    "content": msg.get("text", ""),
-                }
-                for msg in reversed(messages)
-            ]
+            if room_id:
+                return await self._get_room_chat_history(room_id, limit)
+            if user_id:
+                return await self._get_user_chat_history(user_id, limit)
+            return []
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
             logger.error(f"获取聊天历史时出错: {e}")
             return []
+
+    async def _get_room_chat_history(
+        self, room_id: str, limit: int
+    ) -> list[dict[str, str]]:
+        messages = await self.bot.misskey.get_room_messages(room_id, limit=limit)
+        bot_user_id = self.bot.bot_user_id
+        history: list[dict[str, str]] = []
+        for msg in reversed(messages):
+            sender_id = extract_user_id(msg)
+            is_assistant = bool(
+                bot_user_id and isinstance(sender_id, str) and sender_id == bot_user_id
+            )
+            content = msg.get("text") or msg.get("content") or msg.get("body", "")
+            if not is_assistant:
+                content = f"{extract_username(msg)}: {content}"
+            history.append(
+                {"role": "assistant" if is_assistant else "user", "content": content}
+            )
+        return history
+
+    async def _get_user_chat_history(
+        self, user_id: str, limit: int
+    ) -> list[dict[str, str]]:
+        messages = await self.bot.misskey.get_messages(user_id, limit=limit)
+        history: list[dict[str, str]] = []
+        for msg in reversed(messages):
+            role = "user" if extract_user_id(msg) == user_id else "assistant"
+            content = msg.get("text") or msg.get("content") or msg.get("body", "")
+            history.append({"role": role, "content": content})
+        return history
 
 
 class ReactionHandler:
@@ -619,17 +658,23 @@ class MisskeyBot:
         self.runtime.add_task("streaming", self.streaming.connect(channels))
 
     async def get_or_load_chat_history(
-        self, user_id: str, *, limit: int | None
+        self,
+        conversation_id: str,
+        *,
+        limit: int | None,
+        user_id: str | None = None,
+        room_id: str | None = None,
     ) -> list[dict[str, str]]:
         limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
-        if (cached := self._chat_histories.get(user_id)) is not None:
+        if (cached := self._chat_histories.get(conversation_id)) is not None:
             return list(cached)[-max(0, limit * 2) :]
-        if user_id.startswith("room:"):
-            self._chat_histories[user_id] = []
-            return []
-        history = await self.handlers.chat.get_chat_history(user_id, limit=limit)
+        if conversation_id.startswith("room:"):
+            room_id = room_id or conversation_id.removeprefix("room:")
+        history = await self.handlers.chat.get_chat_history(
+            user_id=user_id, room_id=room_id, limit=limit
+        )
         trimmed = history[-max(0, limit * 2) :]
-        self._chat_histories[user_id] = trimmed
+        self._chat_histories[conversation_id] = trimmed
         return list(trimmed)
 
     def append_chat_turn(
