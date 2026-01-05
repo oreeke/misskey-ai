@@ -15,6 +15,7 @@
 - `^plugins`：插件列表
 - `^enable <插件名>`：启用插件
 - `^disable <插件名>`：禁用插件
+- `^reload <插件名>`：重启插件
 - `^model`：查看当前模型
 - `^model <模型名>`：切换模型
 - `^model reset`：恢复默认模型

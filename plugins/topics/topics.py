@@ -25,7 +25,7 @@ class TopicsPlugin(PluginBase):
             await self._load_topics()
             await self._initialize_plugin_data()
             self._log_plugin_action(
-                "initialized", f"loaded {len(self.topics)} custom topics"
+                "initialized", f"Custom topics: {len(self.topics)}"
             )
             return True
         except Exception as e:

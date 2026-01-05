@@ -1,7 +1,7 @@
 # Weather 插件配置文件
 # 获取 API 密钥: https://home.openweathermap.org/api_keys
 
-enabled: true                                 # 插件总开关
-priority: 10                                  # 插件优先级（数字越大越先执行）
+enabled: false                                 # 插件总开关
+priority: 10                                   # 插件优先级（数字越大越先执行）
 
-api_key: "your_openweathermap_api_key_here"   # 请替换为你的 OpenWeatherMap API 密钥
+api_key: "your_openweathermap_api_key_here"    # 请替换为你的 OpenWeatherMap API 密钥

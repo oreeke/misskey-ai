@@ -9,6 +9,8 @@ from src.plugin import PluginBase
 from src.streaming import ChannelType
 from src.utils import get_memory_usage, get_system_info, health_check
 
+_MSG_SPECIFY_PLUGIN_NAME = "请指定插件名称"
+
 
 class CmdPlugin(PluginBase):
     description = "命令插件，在聊天中使用 ^ 开头的命令管理机器人"
@@ -22,36 +24,40 @@ class CmdPlugin(PluginBase):
     def _setup_default_commands(self):
         if not self.commands:
             self.commands = {
-                "help": {"description": "帮助信息", "aliases": ["帮助"]},
-                "status": {"description": "机器人状态", "aliases": ["状态"]},
-                "sysinfo": {"description": "系统信息", "aliases": ["系统"]},
-                "memory": {"description": "内存使用情况", "aliases": ["内存"]},
-                "plugins": {"description": "插件列表", "aliases": ["插件"]},
-                "model": {
-                    "description": "查看/切换模型 (用法: model [模型名]|reset)",
-                    "aliases": ["模型"],
-                },
+                "help": {"description": "帮助信息", "aliases": []},
+                "status": {"description": "机器人状态", "aliases": []},
+                "sysinfo": {"description": "系统信息", "aliases": []},
+                "memory": {"description": "内存使用情况", "aliases": []},
+                "plugins": {"description": "插件列表", "aliases": []},
                 "enable": {
                     "description": "启用插件 (用法: enable <插件名>)",
-                    "aliases": ["启用"],
+                    "aliases": [],
                 },
                 "disable": {
                     "description": "禁用插件 (用法: disable <插件名>)",
-                    "aliases": ["禁用"],
+                    "aliases": [],
                 },
-                "dbstats": {"description": "数据库统计", "aliases": ["数据库"]},
-                "dbclear": {
-                    "description": "清理插件数据 (用法: dbclear <插件名> [键名])",
-                    "aliases": ["清理"],
+                "reload": {
+                    "description": "重启插件 (用法: reload <插件名>)",
+                    "aliases": [],
+                },
+                "model": {
+                    "description": "查看/切换模型 (用法: model [模型名]|reset)",
+                    "aliases": [],
                 },
                 "timeline": {
                     "description": "查看/切换时间线订阅 (用法: timeline [status|add|del|set|clear|reset] ...)",
-                    "aliases": ["tl", "时间线"],
+                    "aliases": [],
+                },
+                "dbstats": {"description": "数据库统计", "aliases": []},
+                "dbclear": {
+                    "description": "清理插件数据 (用法: dbclear <插件名> [键名])",
+                    "aliases": [],
                 },
             }
 
     async def initialize(self) -> bool:
-        self._log_plugin_action("initialized", f"{len(self.commands)} command groups")
+        self._log_plugin_action("initialized", f"Command groups: {len(self.commands)}")
         return True
 
     async def on_startup(self) -> None:
@@ -76,9 +82,9 @@ class CmdPlugin(PluginBase):
         if cmd_lower in self.commands:
             return cmd_lower
         for command_name, command_info in self.commands.items():
-            if cmd_lower in [
+            if cmd_lower in (
                 alias.lower() for alias in command_info.get("aliases", [])
-            ]:
+            ):
                 return command_name
         return None
 
@@ -89,12 +95,13 @@ class CmdPlugin(PluginBase):
             "sysinfo": self._get_system_info,
             "memory": self._get_memory_usage,
             "plugins": self._get_plugins_info,
-            "model": lambda: self._handle_model(args),
             "enable": lambda: self._enable_plugin(args),
             "disable": lambda: self._disable_plugin(args),
+            "reload": lambda: self._reload_plugin(args),
+            "model": lambda: self._handle_model(args),
+            "timeline": lambda: self._handle_timeline(args),
             "dbstats": self._get_db_stats,
             "dbclear": lambda: self._clear_plugin_data(args),
-            "timeline": lambda: self._handle_timeline(args),
         }
         if command in commands:
             try:
@@ -143,26 +150,42 @@ class CmdPlugin(PluginBase):
             )
         return "\n".join(info_lines)
 
-    def _toggle_plugin(self, plugin_name: str, enable: bool) -> str:
+    async def _toggle_plugin(self, plugin_name: str, enable: bool) -> str:
         if not plugin_name.strip():
-            return "请指定插件名称"
+            return _MSG_SPECIFY_PLUGIN_NAME
         name = plugin_name.strip()
+        action = "启用" if enable else "禁用"
+        past_action = "已启用" if enable else "已禁用"
+        if hasattr(self.plugin_manager, "set_plugin_enabled"):
+            if await self.plugin_manager.set_plugin_enabled(name, enable):
+                return f"插件 {name} {past_action}"
+            return f"插件 {name} 不存在或{action}失败"
         method = (
             self.plugin_manager.enable_plugin
             if enable
             else self.plugin_manager.disable_plugin
         )
-        action = "启用" if enable else "禁用"
-        past_action = "已启用" if enable else "已禁用"
         if method(name):
             return f"插件 {name} {past_action}"
         return f"插件 {name} 不存在或{action}失败"
 
-    def _enable_plugin(self, plugin_name: str) -> str:
-        return self._toggle_plugin(plugin_name, True)
+    async def _enable_plugin(self, plugin_name: str) -> str:
+        return await self._toggle_plugin(plugin_name, True)
 
-    def _disable_plugin(self, plugin_name: str) -> str:
-        return self._toggle_plugin(plugin_name, False)
+    async def _disable_plugin(self, plugin_name: str) -> str:
+        return await self._toggle_plugin(plugin_name, False)
+
+    async def _reload_plugin(self, plugin_name: str) -> str:
+        if not plugin_name.strip():
+            return _MSG_SPECIFY_PLUGIN_NAME
+        if not getattr(self, "plugin_manager", None) or not hasattr(
+            self.plugin_manager, "reload_plugin"
+        ):
+            return "插件管理器不支持重启插件"
+        name = plugin_name.strip()
+        if await self.plugin_manager.reload_plugin(name):
+            return f"插件 {name} 已重启并重读配置"
+        return f"插件 {name} 不存在或重启失败"
 
     async def _get_db_stats(self) -> str:
         try:
@@ -182,7 +205,7 @@ class CmdPlugin(PluginBase):
 
     async def _clear_plugin_data(self, args: str) -> str:
         if not args.strip():
-            return "请指定插件名称"
+            return _MSG_SPECIFY_PLUGIN_NAME
         parts = args.strip().split()
         plugin_name = parts[0]
         key = parts[1] if len(parts) > 1 else None
@@ -285,7 +308,7 @@ class CmdPlugin(PluginBase):
         if action in {"reset", "default"}:
             bot.timeline_channels = bot.load_timeline_channels()
             await bot.restart_streaming()
-            return "已按配置重置时间线订阅\n" + self._format_timeline_status()
+            return "已重置时间线订阅\n" + self._format_timeline_status()
         if action in {"clear", "off"}:
             bot.timeline_channels = set()
             await bot.restart_streaming()

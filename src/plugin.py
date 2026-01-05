@@ -14,6 +14,8 @@ from .utils import extract_user_id, extract_username
 
 __all__ = ("PluginBase", "PluginContext", "PluginManager")
 
+_PLUGIN_CONFIG_FILENAME = "config.yaml"
+
 
 class PluginContext:
     def __init__(self, name: str, config: dict[str, Any], **context_objects):
@@ -144,6 +146,7 @@ class PluginManager:
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: dict[str, PluginBase] = {}
+        self.discovered_plugins: dict[str, dict[str, Any]] = {}
         self.persistence = persistence
         self.context_objects = context_objects or {}
 
@@ -164,14 +167,27 @@ class PluginManager:
                 and not plugin_dir.name.startswith(".")
                 and plugin_dir.name not in {"__pycache__", "example"}
             ):
-                self._load_plugin(plugin_dir, self._load_plugin_config(plugin_dir))
+                plugin_config = self._load_plugin_config(plugin_dir)
+                configured = (plugin_dir / _PLUGIN_CONFIG_FILENAME).exists()
+                enabled = bool(plugin_config.get("enabled", False))
+                key = plugin_dir.name
+                self.discovered_plugins[key] = {
+                    "name": key.capitalize(),
+                    "enabled": enabled,
+                    "priority": plugin_config.get("priority", 0),
+                    "configured": configured,
+                }
+                if configured and enabled:
+                    self._load_plugin(plugin_dir, plugin_config)
         await self._initialize_plugins()
         enabled_count = sum(plugin.enabled for plugin in self.plugins.values())
-        logger.info(f"Found {len(self.plugins)} plugins; {enabled_count} enabled")
+        logger.info(
+            f"Found {len(self.discovered_plugins)} plugins; {enabled_count} enabled"
+        )
 
     @staticmethod
     def _load_plugin_config(plugin_dir: Path) -> dict[str, Any]:
-        config_file = plugin_dir / "config.yaml"
+        config_file = plugin_dir / _PLUGIN_CONFIG_FILENAME
         if not config_file.exists():
             return {"enabled": False}
         try:
@@ -269,11 +285,15 @@ class PluginManager:
                 if not await plugin.initialize():
                     logger.warning(f"Plugin {plugin.name} initialization failed")
                     plugin.set_enabled(False)
+                    plugin._initialized = False
+                    continue
+                plugin._initialized = True
             except Exception as e:
                 if isinstance(e, asyncio.CancelledError):
                     raise
                 logger.exception(f"Error initializing plugin {plugin.name}: {e}")
                 plugin.set_enabled(False)
+                plugin._initialized = False
 
     async def cleanup_plugins(self) -> None:
         for plugin in self.plugins.values():
@@ -361,3 +381,98 @@ class PluginManager:
             plugin.set_enabled(False)
             return True
         return False
+
+    def _find_plugin_dir(self, name: str) -> Path | None:
+        if not self.plugins_dir.exists():
+            return None
+        lowered = name.lower()
+        for plugin_dir in self.plugins_dir.iterdir():
+            if (
+                plugin_dir.is_dir()
+                and not plugin_dir.name.startswith(".")
+                and plugin_dir.name not in {"__pycache__", "example"}
+                and plugin_dir.name.lower() == lowered
+            ):
+                return plugin_dir
+        return None
+
+    async def _cleanup_plugin_instance(self, plugin: PluginBase | None) -> None:
+        if not plugin or not getattr(plugin, "_initialized", False):
+            return
+        try:
+            await plugin.cleanup()
+            plugin._initialized = False
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            logger.exception(f"Error cleaning up plugin {plugin.name}: {e}")
+
+    @staticmethod
+    def _unload_plugin_module(key: str) -> None:
+        sys.modules.pop(f"plugins.{key}.plugin", None)
+
+    def _load_plugin_from_dir(self, plugin_dir: Path) -> PluginBase | None:
+        self._load_plugin(plugin_dir, self._load_plugin_config(plugin_dir))
+        return self.plugins.get(plugin_dir.name)
+
+    @staticmethod
+    async def _start_plugin_instance(plugin: PluginBase) -> bool:
+        if not plugin.enabled:
+            return True
+        try:
+            if not await plugin.initialize():
+                plugin.set_enabled(False)
+                plugin._initialized = False
+                return False
+            if (on_startup := getattr(plugin, "on_startup", None)) is not None:
+                await on_startup()
+            plugin._initialized = True
+            return True
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            logger.exception(f"Error initializing plugin {plugin.name}: {e}")
+            plugin.set_enabled(False)
+            plugin._initialized = False
+            return False
+
+    async def set_plugin_enabled(self, name: str, enabled: bool) -> bool:
+        if not (plugin_dir := self._find_plugin_dir(name)):
+            return False
+        if not (plugin_dir / _PLUGIN_CONFIG_FILENAME).exists():
+            return False
+        key = plugin_dir.name
+        if enabled:
+            plugin = self._find_plugin_by_name(key)
+            if not plugin:
+                self._unload_plugin_module(key)
+                if not (plugin := self._load_plugin_from_dir(plugin_dir)):
+                    return False
+            plugin.set_enabled(True)
+            if key in self.discovered_plugins:
+                self.discovered_plugins[key]["enabled"] = True
+            return await self._start_plugin_instance(plugin)
+        plugin = self._find_plugin_by_name(key)
+        await self._cleanup_plugin_instance(plugin)
+        if plugin:
+            plugin.set_enabled(False)
+        self.plugins.pop(key, None)
+        self._unload_plugin_module(key)
+        if key in self.discovered_plugins:
+            self.discovered_plugins[key]["enabled"] = False
+        return True
+
+    async def reload_plugin(self, name: str) -> bool:
+        if not (plugin_dir := self._find_plugin_dir(name)):
+            return False
+        key = plugin_dir.name
+        await self._cleanup_plugin_instance(self._find_plugin_by_name(key))
+        self.plugins.pop(key, None)
+        self._unload_plugin_module(key)
+        if not (plugin := self._load_plugin_from_dir(plugin_dir)):
+            return False
+        if not plugin.enabled:
+            self.plugins.pop(key, None)
+            self._unload_plugin_module(key)
+            return True
+        return await self._start_plugin_instance(plugin)

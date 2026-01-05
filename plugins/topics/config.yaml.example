@@ -1,6 +1,6 @@
 # Topics 插件配置文件
 
-enabled: true                          # 是否启用插件
+enabled: false                         # 是否启用插件
 priority: 100                          # 插件优先级（数字越大越先执行）
 
 start_line: 1                          # 起始行数，仅在数据库表不存在时生效
