@@ -18,27 +18,11 @@
 
 ### 主要功能
 
-- 根据已设置的周期和可见性自动发帖
-- 实时响应用户提及（@）、私信、群聊
-- 自定义系统提示（性格）和发帖提示
-- 订阅天线，对感兴趣的帖子使用反应、回复、转发、引用（需启用 [Radar](./plugins/radar) 插件）
-- 接入多模态模型时，支持图片识别（需启用 [Vision](./plugins/vision) 插件）
-- 配合 OpenAI SDK 兼容性模型生成内容
-  - [OpenAI](https://platform.openai.com/docs/overview)
-  - [DeepSeek](https://api-docs.deepseek.com/)（默认）
-  - [Grok](https://docs.x.ai/docs/guides/migration)
-  - [Gemini](https://ai.google.dev/gemini-api/docs/openai)
-  - [Claude](https://docs.anthropic.com/en/api/openai-sdk)
-  - [Ollama](https://ollama.com/blog/openai-compatibility)
-  - ...
-- 利用插件系统添加丰富的额外功能
-  - [Example](./plugins/example)
-  - [Cmd](./plugins/cmd)
-  - [Topics](./plugins/topics)
-  - [Radar](./plugins/radar)
-  - [Vision](./plugins/vision)
-  - [Weather](./plugins/weather)
-  - ...
+- 📜 根据已设置的周期和可见性自动发帖
+- 💬 实时响应用户提及（`@`）、私信、群聊
+- 👁️ 接入多模态模型时，支持视觉理解（需启用 [Vision](./plugins/vision) 插件）
+- 📡 订阅天线，对感兴趣的帖子自动反应、回复、转发、引用（需启用 [Radar](./plugins/radar) 插件）
+- 🧠 自定义系统提示（性格）和发帖提示
 
 ## 开始
 
@@ -185,3 +169,26 @@ docker compose up -d
 >
 > - 自动发帖会尽量绕过 [Prompt caching](https://platform.openai.com/docs/guides/prompt-caching)，想让帖子更多样化请配置并启用 [Topics](./plugins/topics) 插件<br>
 > - 切换模型仅需修改 `api_key` `model` `api_base`，相同 `api_base` 的模型可通过 [Cmd](./plugins/cmd) 实时切换
+
+## 生态
+
+### 模型兼容
+
+| 模型 | 已兼容 | 多模态 |
+| :---: | :---: | :---: |
+| [OpenAI](https://platform.openai.com/docs/overview) | ✅ | 📝 👁️ 🎨 |
+| [DeepSeek](https://api-docs.deepseek.com/) | ✅ | 📝 |
+| [Grok](https://docs.x.ai/docs/guides/migration) | ✅ | 📝 👁️ 🎨 |
+| [Gemini](https://ai.google.dev/gemini-api/docs/openai) | ✅ | 📝 👁️ 🎨 |
+| [Claude](https://docs.anthropic.com/en/api/openai-sdk) | ✅ | 📝 👁️ |
+| [Ollama](https://ollama.com/blog/openai-compatibility) | ✅ | 📝 👁️ |
+
+### 插件系统
+
+| 插件 | 原生 | 功能 |
+| :---: | :---: | :---: |
+| [Cmd](./plugins/cmd) | ✅ | 在聊天中使用 `^` 开头的命令管理机器人 |
+| [Radar](./plugins/radar) | ✅ | 与天线推送的帖子互动（反应、回复、转发、引用） |
+| [Topics](./plugins/topics) | ✅ | 为自动发帖插入有序循环的主题关键词 |
+| [Vision](./plugins/vision) | ✅ | 识别提及（`@`）或聊天中的图片并回复 |
+| [Weather](./plugins/weather) | ✅ | 查询指定城市的天气信息 |

@@ -9,7 +9,7 @@ from src.plugin import PluginBase
 
 
 class TopicsPlugin(PluginBase):
-    description = "主题插件，为自动发帖插入按顺序循环的主题关键词"
+    description = "主题插件，为自动发帖插入有序循环的主题关键词"
 
     def __init__(self, context):
         super().__init__(context)
