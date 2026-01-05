@@ -157,28 +157,54 @@ class PluginManager:
         await self.cleanup_plugins()
         return False
 
+    def _iter_plugin_dirs(self):
+        for plugin_dir in self.plugins_dir.iterdir():
+            if not plugin_dir.is_dir():
+                continue
+            if plugin_dir.name.startswith("."):
+                continue
+            if plugin_dir.name in {"__pycache__", "example"}:
+                continue
+            yield plugin_dir
+
+    def _discover_plugin_dir(
+        self, plugin_dir: Path, plugin_config: dict[str, Any]
+    ) -> tuple[bool, bool]:
+        configured = (plugin_dir / _PLUGIN_CONFIG_FILENAME).exists()
+        enabled = bool(plugin_config.get("enabled", False))
+        key = plugin_dir.name
+        self.discovered_plugins[key] = {
+            "name": key.capitalize(),
+            "enabled": enabled,
+            "priority": plugin_config.get("priority", 0),
+            "configured": configured,
+        }
+        if configured:
+            status = "enabled" if enabled else "disabled"
+            logger.debug(f"Discovered plugin: {plugin_dir.name} (status: {status})")
+        return configured, enabled
+
+    def _maybe_load_plugin_dir(
+        self,
+        plugin_dir: Path,
+        plugin_config: dict[str, Any],
+        *,
+        configured: bool,
+        enabled: bool,
+    ) -> None:
+        if configured and enabled:
+            self._load_plugin(plugin_dir, plugin_config)
+
     async def load_plugins(self) -> None:
         if not self.plugins_dir.exists():
             logger.info(f"Plugins directory not found: {self.plugins_dir}")
             return
-        for plugin_dir in self.plugins_dir.iterdir():
-            if (
-                plugin_dir.is_dir()
-                and not plugin_dir.name.startswith(".")
-                and plugin_dir.name not in {"__pycache__", "example"}
-            ):
-                plugin_config = self._load_plugin_config(plugin_dir)
-                configured = (plugin_dir / _PLUGIN_CONFIG_FILENAME).exists()
-                enabled = bool(plugin_config.get("enabled", False))
-                key = plugin_dir.name
-                self.discovered_plugins[key] = {
-                    "name": key.capitalize(),
-                    "enabled": enabled,
-                    "priority": plugin_config.get("priority", 0),
-                    "configured": configured,
-                }
-                if configured and enabled:
-                    self._load_plugin(plugin_dir, plugin_config)
+        for plugin_dir in self._iter_plugin_dirs():
+            plugin_config = self._load_plugin_config(plugin_dir)
+            configured, enabled = self._discover_plugin_dir(plugin_dir, plugin_config)
+            self._maybe_load_plugin_dir(
+                plugin_dir, plugin_config, configured=configured, enabled=enabled
+            )
         await self._initialize_plugins()
         enabled_count = sum(plugin.enabled for plugin in self.plugins.values())
         logger.info(
@@ -213,8 +239,6 @@ class PluginManager:
                 plugin_class, plugin_dir.name, plugin_config
             )
             self.plugins[plugin_dir.name] = plugin_instance
-            status = "enabled" if plugin_instance.enabled else "disabled"
-            logger.debug(f"Discovered plugin: {plugin_dir.name} (status: {status})")
         except Exception as e:
             logger.error(f"Failed to load plugin {plugin_dir.name}: {e}")
 
@@ -360,7 +384,19 @@ class PluginManager:
         return results
 
     def get_plugin_info(self) -> list[dict[str, Any]]:
-        return [plugin.get_info() for plugin in self.plugins.values()]
+        loaded = {name: plugin.get_info() for name, plugin in self.plugins.items()}
+        configured = {
+            name: info
+            for name, info in self.discovered_plugins.items()
+            if info.get("configured") and name not in loaded
+        }
+        result: list[dict[str, Any]] = []
+        for name in sorted(loaded.keys() | configured.keys()):
+            if name in loaded:
+                result.append(loaded[name])
+            else:
+                result.append(configured[name])
+        return result
 
     def get_plugin(self, name: str) -> PluginBase | None:
         return self.plugins.get(name)
