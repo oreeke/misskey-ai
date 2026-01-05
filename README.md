@@ -2,7 +2,7 @@
 
 <h1>Misskey AI</h1>
 
-一只 Python 实现的 Misskey 机器人<br>
+一只 Python 实现的 Misskey 机器人<br><br>
 正运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
 
 <a href="https://www.python.org/downloads">
@@ -174,21 +174,21 @@ docker compose up -d
 
 ### 模型兼容
 
-| 模型 | 已兼容 | 多模态 |
-| :---: | :---: | :---: |
+| 供应商 | OpenAI SDK | 多模态 |
+| :---: | :---: | --- |
 | [OpenAI](https://platform.openai.com/docs/overview) | ✅ | 📝 👁️ 🎨 |
 | [DeepSeek](https://api-docs.deepseek.com/) | ✅ | 📝 |
-| [Grok](https://docs.x.ai/docs/guides/migration) | ✅ | 📝 👁️ 🎨 |
+| [xAI](https://docs.x.ai/docs/guides/migration) | ✅ | 📝 👁️ 🎨 |
 | [Gemini](https://ai.google.dev/gemini-api/docs/openai) | ✅ | 📝 👁️ 🎨 |
 | [Claude](https://docs.anthropic.com/en/api/openai-sdk) | ✅ | 📝 👁️ |
 | [Ollama](https://ollama.com/blog/openai-compatibility) | ✅ | 📝 👁️ |
 
 ### 插件系统
 
-| 插件 | 原生 | 功能 |
-| :---: | :---: | :---: |
-| [Cmd](./plugins/cmd) | ✅ | 在聊天中使用 `^` 开头的命令管理机器人 |
-| [Radar](./plugins/radar) | ✅ | 与天线推送的帖子互动（反应、回复、转发、引用） |
-| [Topics](./plugins/topics) | ✅ | 为自动发帖插入有序循环的主题关键词 |
-| [Vision](./plugins/vision) | ✅ | 识别提及（`@`）或聊天中的图片并回复 |
-| [Weather](./plugins/weather) | ✅ | 查询指定城市的天气信息 |
+| 插件 | 功能描述 |
+| :---: | --- |
+| [Cmd](./plugins/cmd) | 在聊天中使用 `^` 开头的命令管理机器人 |
+| [Radar](./plugins/radar) | 与天线推送的帖子互动（反应、回复、转发、引用） |
+| [Topics](./plugins/topics) | 为自动发帖插入有序循环的主题关键词 |
+| [Vision](./plugins/vision) | 识别提及（`@`）或聊天中的图片并回复 |
+| [Weather](./plugins/weather) | 查询指定城市的天气信息 |
