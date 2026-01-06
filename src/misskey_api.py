@@ -280,21 +280,6 @@ class MisskeyAPI:
             return original_visibility
         return visibility
 
-    async def _get_visibility_for_reply(
-        self, reply_id: str, visibility: str | None
-    ) -> str:
-        try:
-            original_note = await self.get_note(reply_id)
-            original_visibility = original_note.get("visibility", "public")
-            return self._determine_reply_visibility(original_visibility, visibility)
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
-            logger.warning(
-                f"Failed to get original note visibility; using default: {e}"
-            )
-            return visibility if visibility is not None else "home"
-
     async def create_note(
         self,
         text: str,
@@ -303,18 +288,16 @@ class MisskeyAPI:
         local_only: bool | None = None,
         validate_reply: bool = True,
     ) -> dict[str, Any]:
-        if reply_id and validate_reply and not await self.note_exists(reply_id):
-            logger.warning(
-                f"Target note not found; creating a new note instead of a reply: {reply_id}"
+        resolved_reply_id = reply_id
+        if resolved_reply_id:
+            resolved_reply_id, visibility = await self._resolve_reply_visibility(
+                resolved_reply_id, visibility, validate_reply
             )
-            reply_id = None
-        if reply_id:
-            visibility = await self._get_visibility_for_reply(reply_id, visibility)
-        elif visibility is None:
+        if visibility is None:
             visibility = "public"
         data = {"text": text, "visibility": visibility}
-        if reply_id:
-            data["replyId"] = reply_id
+        if resolved_reply_id:
+            data["replyId"] = resolved_reply_id
         if local_only:
             data["localOnly"] = True
         result = await self.make_request("notes/create", data)
@@ -322,6 +305,50 @@ class MisskeyAPI:
             f"Misskey note created: note_id={result.get('createdNote', {}).get('id', 'unknown')}"
         )
         return result
+
+    async def _resolve_reply_visibility(
+        self,
+        reply_id: str,
+        visibility: str | None,
+        validate_reply: bool,
+    ) -> tuple[str | None, str | None]:
+        try:
+            original_note = await self.get_note(reply_id)
+            original_visibility = original_note.get("visibility", "public")
+            adjusted = self._determine_reply_visibility(original_visibility, visibility)
+            return reply_id, adjusted
+        except (
+            APIBadRequestError,
+            APIConnectionError,
+            APIRateLimitError,
+            AuthenticationError,
+        ) as e:
+            return self._handle_reply_lookup_failure(
+                reply_id, visibility, validate_reply, e
+            )
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            return self._handle_reply_lookup_failure(
+                reply_id, visibility, validate_reply, e
+            )
+
+    @staticmethod
+    def _handle_reply_lookup_failure(
+        reply_id: str,
+        visibility: str | None,
+        validate_reply: bool,
+        error: Exception,
+    ) -> tuple[str | None, str | None]:
+        if validate_reply:
+            logger.warning(
+                f"Target note not found; creating a new note instead of a reply: {reply_id}"
+            )
+            return None, visibility
+        logger.warning(
+            f"Failed to get original note visibility; using default: {error}"
+        )
+        return reply_id, visibility if visibility is not None else "home"
 
     async def get_note(self, note_id: str) -> dict[str, Any]:
         return await self.make_request("notes/show", {"noteId": note_id})

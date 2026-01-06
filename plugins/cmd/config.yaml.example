@@ -4,6 +4,6 @@ enabled: false                    # 是否启用插件
 priority: 999                     # 插件优先级（数字越大越先执行）
 
 allowed_users:                    # 允许使用命令的用户列表
-  - "admin"                       # 用户 ID 或用户名
+  - "admin@example.com"           # 用户 ID 或 username@host
   - "user1"
   - "user2"

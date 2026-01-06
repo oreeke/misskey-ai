@@ -1,5 +1,6 @@
 import asyncio
 from typing import Any
+from urllib.parse import urlparse
 
 import aiosqlite
 from loguru import logger
@@ -83,8 +84,25 @@ class CmdPlugin(PluginBase):
         self._set_global_config_value(ConfigKeys.OPENAI_MODEL, model)
         self._log_plugin_action("applied model override", model)
 
-    def _is_authorized(self, user_id: str, username: str) -> bool:
-        return user_id in self.allowed_users or username in self.allowed_users
+    def _is_authorized(self, user_id: str, handle: str | None) -> bool:
+        return user_id in self.allowed_users or (
+            handle is not None and handle in self.allowed_users
+        )
+
+    def _canonical_handle(self, username: str, handle: str | None) -> str | None:
+        if isinstance(handle, str) and (h := handle.strip()):
+            if "@" in h:
+                return h
+            if username and h != username:
+                return None
+        if not username or username == "unknown":
+            return None
+        misskey = getattr(self, "misskey", None)
+        instance_url = getattr(misskey, "instance_url", None) if misskey else None
+        if not isinstance(instance_url, str) or not instance_url:
+            return None
+        host = urlparse(instance_url).hostname
+        return f"{username}@{host}" if host else None
 
     def _find_command(self, cmd: str) -> str | None:
         cmd_lower = cmd.lower()
@@ -579,16 +597,20 @@ class CmdPlugin(PluginBase):
         try:
             user_id = self._extract_user_id(message_data)
             username = self._extract_username(message_data)
+            handle = self._canonical_handle(
+                username, self._extract_user_handle(message_data)
+            )
             if not user_id:
                 return None
-            if not self._is_authorized(user_id, username):
+            if not self._is_authorized(user_id, handle):
                 return self._create_response("您没有权限使用命令。")
             command_text = text[1:].strip()
             parts = command_text.split(maxsplit=1)
             command_name = self._find_command(parts[0])
             args = parts[1] if len(parts) > 1 else ""
             if command_name:
-                self._log_plugin_action("ran command", f"@{username}: ^{command_text}")
+                who = handle or username
+                self._log_plugin_action("ran command", f"@{who}: ^{command_text}")
                 result = await self._execute_command(command_name, args)
                 return self._create_response(result)
             return self._create_response(

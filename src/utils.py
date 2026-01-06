@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 from typing import Any
 
 import psutil
@@ -12,8 +13,20 @@ __all__ = (
     "get_memory_usage",
     "extract_user_id",
     "extract_username",
+    "extract_user_handle",
+    "redact_misskey_access_token",
     "health_check",
 )
+
+_MISSKEY_I_PARAM_RE = re.compile(r"([?&]i=)[^&#\s]+")
+_MISSKEY_I_JSON_RE = re.compile(r'("i"\s*:\s*")[^"]+(")')
+
+
+def redact_misskey_access_token(text: str) -> str:
+    if not text:
+        return text
+    text = _MISSKEY_I_PARAM_RE.sub(r"\1***", text)
+    return _MISSKEY_I_JSON_RE.sub(r"\1***\2", text)
 
 
 def retry_async(max_retries=3, retryable_exceptions=None):
@@ -62,6 +75,19 @@ def extract_username(message: dict[str, Any]) -> str:
     if isinstance(user_info, dict):
         return user_info.get("username", "unknown")
     return "unknown"
+
+
+def extract_user_handle(message: dict[str, Any]) -> str | None:
+    user_info = message.get("fromUser") or message.get("user")
+    if not isinstance(user_info, dict):
+        return None
+    username = user_info.get("username")
+    if not isinstance(username, str) or not (u := username.strip()):
+        return None
+    host = user_info.get("host")
+    if isinstance(host, str) and (h := host.strip()):
+        return f"{u}@{h}"
+    return u
 
 
 def health_check() -> bool:

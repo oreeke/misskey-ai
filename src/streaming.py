@@ -20,6 +20,7 @@ from .constants import (
 )
 from .exceptions import WebSocketConnectionError, WebSocketReconnectError
 from .transport import ClientSession
+from .utils import redact_misskey_access_token
 
 __all__ = ("ChannelType", "StreamingClient")
 
@@ -105,17 +106,6 @@ class StreamingClient:
 
     def _add_event_handler(self, event_type: str, handler: Callable) -> None:
         self.event_handlers.setdefault(event_type, []).append(handler)
-
-    @staticmethod
-    def _looks_like_note(data: Any) -> bool:
-        if not isinstance(data, dict):
-            return False
-        return (
-            isinstance(data.get("id"), str)
-            and isinstance(data.get("createdAt"), str)
-            and isinstance(data.get("userId"), str)
-            and isinstance(data.get("user"), dict)
-        )
 
     @staticmethod
     def _channel_name(spec: ChannelSpec) -> str:
@@ -250,7 +240,8 @@ class StreamingClient:
             logger.debug(f"WebSocket connected: {safe_url}")
         except (aiohttp.ClientError, OSError) as e:
             await self._cleanup_failed_connection()
-            logger.error(f"WebSocket connection failed: {e}")
+            error_msg = redact_misskey_access_token(str(e))
+            logger.error(f"WebSocket connection failed: {error_msg}")
             raise WebSocketConnectionError()
 
     async def _listen_messages(self) -> None:
@@ -323,45 +314,38 @@ class StreamingClient:
             return
         channel_info = self.channels[channel_id]
         channel_name = channel_info.get("name", "unknown")
-        event_data = body.get("body") or {}
+        outer_type = body.get("type")
+        event_body = body.get("body")
+        if not isinstance(outer_type, str) or not outer_type:
+            logger.debug(
+                f"Received {channel_name} data without standard event type; skipping (channel_id={channel_id})"
+            )
+            if self.log_dump_events:
+                logger.opt(lazy=True).debug(
+                    _EVENT_DATA_LOG_TEMPLATE,
+                    lambda: json.dumps(body, ensure_ascii=False, indent=2),
+                )
+            return
+        if event_body is None:
+            event_body = {}
+        event_data: dict[str, Any] = {"type": outer_type, "body": event_body}
         event_type, event_data = self._normalize_channel_event(channel_name, event_data)
         event_id = self._extract_event_id(event_data, event_type)
         if self._is_duplicate_event(event_id, event_type):
             return
-        self._track_event(event_id)
+        self._track_event(event_id, event_type)
         if event_type:
             logger.debug(
                 f"Received {channel_name} event: {event_type} (channel_id={channel_id}, event_id={event_id})"
             )
         await self._enqueue_event(channel_name, event_data)
 
-    @staticmethod
-    def _is_chat_payload(event_data: dict[str, Any]) -> bool:
-        has_users = bool(
-            event_data.get("fromUserId")
-            and (event_data.get("toUserId") or event_data.get("toRoomId"))
-        )
-        has_content = (
-            event_data.get("text") is not None
-            or event_data.get("fileId") is not None
-            or event_data.get("file") is not None
-        )
-        return has_users and has_content
-
     def _normalize_channel_event(
         self, channel_name: str, event_data: dict[str, Any]
     ) -> tuple[str | None, dict[str, Any]]:
         event_type = event_data.get("type")
-        if (
-            not event_type
-            and channel_name in NOTE_CHANNELS
-            and self._looks_like_note(event_data)
-        ):
-            wrapped = {"type": "note", "body": event_data}
-            return "note", wrapped
-        if not event_type and self._is_chat_payload(event_data):
-            event_data["type"] = "chat"
-            return "chat", event_data
+        if channel_name == ChannelType.MAIN.value:
+            return self._normalize_main_channel_event(event_type, event_data)
         return event_type, event_data
 
     @staticmethod
@@ -373,6 +357,102 @@ class StreamingClient:
             return event_id
         inner_id = (event_data.get("body") or {}).get("id")
         return inner_id if isinstance(inner_id, str) else None
+
+    def _normalize_main_channel_event(
+        self, event_type: Any, event_data: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
+        if not isinstance(event_type, str) or not event_type:
+            return event_type, event_data
+        payload = event_data.get("body")
+        if not isinstance(payload, dict):
+            return event_type, event_data
+
+        normalizers = {
+            "mention": lambda: self._wrap_note_event("mention", payload),
+            "reply": lambda: self._wrap_note_event("reply", payload),
+            "renote": lambda: self._wrap_note_event("renote", payload),
+            "chat": lambda: self._wrap_chat_message(payload),
+            "messagingMessage": lambda: self._wrap_chat_message(payload),
+            "newChatMessage": lambda: self._wrap_chat_message(payload),
+            "newRoomChatMessage": lambda: self._wrap_chat_message(payload),
+            "newMessagingMessage": lambda: self._wrap_chat_message(payload),
+            "follow": lambda: self._wrap_follow_user(payload),
+            "followed": lambda: self._wrap_follow_user(payload),
+            "unfollow": lambda: self._wrap_follow_user(payload),
+            "receiveFollowRequest": lambda: self._wrap_follow_user(payload),
+            "notification": lambda: self._normalize_notification_event(payload),
+            "unreadNotification": lambda: self._normalize_notification_event(payload),
+        }
+        normalizer = normalizers.get(event_type)
+        return normalizer() if normalizer else (event_type, event_data)
+
+    @staticmethod
+    def _extract_dict(container: dict[str, Any], key: str) -> dict[str, Any] | None:
+        value = container.get(key)
+        return value if isinstance(value, dict) else None
+
+    def _wrap_note_event(
+        self, event_type: str, note: dict[str, Any]
+    ) -> tuple[str, dict[str, Any]]:
+        note_id = note.get("id") if isinstance(note.get("id"), str) else None
+        wrapped: dict[str, Any] = {"type": event_type, "note": note}
+        if note_id:
+            wrapped["id"] = note_id
+        return event_type, wrapped
+
+    def _wrap_follow_user(self, user: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        user_id = user.get("id") if isinstance(user.get("id"), str) else None
+        wrapped: dict[str, Any] = {"type": "follow", "user": user}
+        if user_id:
+            wrapped["id"] = user_id
+        return "follow", wrapped
+
+    def _wrap_chat_message(self, message: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        normalized = dict(message)
+        if "type" not in normalized:
+            normalized["type"] = "chat"
+        return "chat", normalized
+
+    def _normalize_notification_event(
+        self, payload: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
+        inner_type = payload.get("type")
+        if not isinstance(inner_type, str) or not inner_type:
+            return "notification", payload
+
+        normalizers = {
+            "mention": lambda: self._normalize_notification_note(payload, "mention"),
+            "reply": lambda: self._normalize_notification_note(payload, "reply"),
+            "follow": lambda: self._normalize_notification_follow(payload),
+            "followed": lambda: self._normalize_notification_follow(payload),
+            "unfollow": lambda: self._normalize_notification_follow(payload),
+            "receiveFollowRequest": lambda: self._normalize_notification_follow(
+                payload
+            ),
+            "chat": lambda: self._normalize_notification_chat(payload),
+            "messagingMessage": lambda: self._normalize_notification_chat(payload),
+        }
+        normalizer = normalizers.get(inner_type)
+        normalized = normalizer() if normalizer else None
+        return normalized if normalized else ("notification", payload)
+
+    def _normalize_notification_note(
+        self, payload: dict[str, Any], event_type: str
+    ) -> tuple[str | None, dict[str, Any]] | None:
+        note = self._extract_dict(payload, "note")
+        return self._wrap_note_event(event_type, note) if note else None
+
+    def _normalize_notification_follow(
+        self, payload: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]] | None:
+        user = self._extract_dict(payload, "user")
+        return self._wrap_follow_user(user) if user else None
+
+    def _normalize_notification_chat(
+        self, payload: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]] | None:
+        message = self._extract_dict(payload, "message")
+        return self._wrap_chat_message(message) if message else None
 
     def _ensure_workers_started(self) -> None:
         if self._workers:
@@ -517,13 +597,25 @@ class StreamingClient:
                 logger.exception(f"Event handler failed ({event_type}): {e}")
 
     def _is_duplicate_event(self, event_id: str | None, event_type: str | None) -> bool:
-        if event_id and event_id in self.processed_events:
+        dedup_key = self._event_dedup_key(event_id, event_type)
+        if dedup_key and dedup_key in self.processed_events:
             logger.debug(
                 f"Duplicate event detected; skipping - {event_type}, event_id={event_id}"
             )
             return True
         return False
 
-    def _track_event(self, event_id: str | None) -> None:
-        if event_id:
-            self.processed_events[event_id] = True
+    def _track_event(self, event_id: str | None, event_type: str | None) -> None:
+        self._track_dedup_key(self._event_dedup_key(event_id, event_type))
+
+    def _track_dedup_key(self, dedup_key: str | None) -> None:
+        if dedup_key:
+            self.processed_events[dedup_key] = True
+
+    @staticmethod
+    def _event_dedup_key(event_id: str | None, event_type: str | None) -> str | None:
+        if not event_id:
+            return None
+        if not event_type:
+            return event_id
+        return f"{event_type}:{event_id}"

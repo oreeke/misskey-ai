@@ -10,7 +10,7 @@ from loguru import logger
 
 from . import utils
 from .config import Config
-from .utils import extract_user_id, extract_username
+from .utils import extract_user_handle, extract_user_id, extract_username
 
 __all__ = ("PluginBase", "PluginContext", "PluginManager")
 
@@ -97,6 +97,10 @@ class PluginBase:
     @staticmethod
     def _extract_username(data: dict[str, Any]) -> str:
         return extract_username(data)
+
+    @staticmethod
+    def _extract_user_handle(data: dict[str, Any]) -> str | None:
+        return extract_user_handle(data)
 
     @staticmethod
     def _extract_user_id(data: dict[str, Any]) -> str | None:
@@ -282,6 +286,7 @@ class PluginManager:
     def _create_plugin_instance(self, plugin_class, plugin_name, plugin_config):
         utils_provider = {
             "extract_username": utils.extract_username,
+            "extract_user_handle": utils.extract_user_handle,
             "extract_user_id": utils.extract_user_id,
         }
         context_objects = {

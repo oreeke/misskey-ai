@@ -13,6 +13,8 @@ from .constants import (
     CHAT_CACHE_MAX_USERS,
     CHAT_CACHE_TTL,
     ConfigKeys,
+    HANDLED_MENTIONS_CACHE_MAX,
+    HANDLED_MENTIONS_CACHE_TTL,
     USER_LOCK_CACHE_MAX,
     USER_LOCK_TTL,
 )
@@ -26,7 +28,12 @@ from .plugin import PluginManager
 from .runtime import BotRuntime
 from .streaming import ChannelSpec, ChannelType, StreamingClient
 from .transport import ClientSession
-from .utils import extract_user_id, extract_username, get_memory_usage
+from .utils import (
+    extract_user_handle,
+    extract_user_id,
+    extract_username,
+    get_memory_usage,
+)
 
 __all__ = ("MisskeyBot",)
 
@@ -43,6 +50,9 @@ class MentionContext:
 class MentionHandler:
     def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
+        self._handled_mentions: TTLCache[str, bool] = TTLCache(
+            maxsize=HANDLED_MENTIONS_CACHE_MAX, ttl=HANDLED_MENTIONS_CACHE_TTL
+        )
 
     @staticmethod
     def _effective_text(note_data: Any) -> str:
@@ -55,20 +65,67 @@ class MentionHandler:
                 parts.append(s)
         return "\n\n".join(parts).strip()
 
+    @staticmethod
+    def _note_payload(note: dict[str, Any]) -> dict[str, Any] | None:
+        payload = note.get("note")
+        return payload if isinstance(payload, dict) else None
+
+    def _is_reply_to_bot(self, note_data: dict[str, Any]) -> bool:
+        replied = note_data.get("reply")
+        if not isinstance(replied, dict):
+            return False
+        replied_user_id = extract_user_id(replied)
+        if self.bot.bot_user_id and replied_user_id == self.bot.bot_user_id:
+            return True
+        if not self.bot.bot_username:
+            return False
+        replied_user = replied.get("user")
+        return (
+            isinstance(replied_user, dict)
+            and replied_user.get("username") == self.bot.bot_username
+        )
+
+    def _parse_reply_text(self, note_data: dict[str, Any]) -> str:
+        parts: list[str] = []
+        if t := self._effective_text(note_data.get("reply")):
+            parts.append(t)
+        if t := self._effective_text(note_data):
+            parts.append(t)
+        return "\n\n".join(parts).strip()
+
     async def handle(self, note: dict[str, Any]) -> None:
         if not self.bot.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
             return
         mention = self._parse(note)
         if not mention.mention_id:
             return
+        if (
+            self.bot.bot_user_id
+            and mention.user_id
+            and mention.user_id == self.bot.bot_user_id
+        ):
+            return
+        if (
+            self.bot.bot_username
+            and mention.username
+            and (
+                mention.username == self.bot.bot_username
+                or mention.username.startswith(f"{self.bot.bot_username}@")
+            )
+        ):
+            return
         try:
             async with self.bot.lock_actor(mention.user_id, mention.username):
-                logger.info(
-                    f"Mention received from @{mention.username}: {self.bot.format_log_text(mention.text)}"
-                )
-                if await self._try_plugin_response(mention, note):
+                if mention.mention_id in self._handled_mentions:
                     return
-                await self._generate_ai_response(mention)
+                display = mention.username or "unknown"
+                logger.info(
+                    f"Mention received from @{display}: {self.bot.format_log_text(mention.text)}"
+                )
+                handled = await self._try_plugin_response(mention, note)
+                if not handled:
+                    await self._generate_ai_response(mention)
+                self._handled_mentions[mention.mention_id] = True
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
@@ -76,37 +133,48 @@ class MentionHandler:
 
     def _parse(self, note: dict[str, Any]) -> MentionContext:
         try:
-            is_reply_event = note.get("type") == "reply" and "note" in note
             if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
                 logger.opt(lazy=True).debug(
                     "Mention data: {}",
                     lambda: json.dumps(note, ensure_ascii=False, indent=2),
                 )
-            mention_id = note.get("id")
-            reply_target_id = note.get("note", {}).get("id")
-            if is_reply_event:
-                note_data = note["note"]
-                text_parts: list[str] = []
-                if t := self._effective_text(note_data.get("reply")):
-                    text_parts.append(t)
-                if t := self._effective_text(note_data):
-                    text_parts.append(t)
-                text = "\n\n".join(text_parts).strip()
-                user_id = note_data.get("userId")
-                username = note_data.get("user", {}).get("username")
-            else:
-                text = self._effective_text(note.get("note"))
-                user_id = extract_user_id(note)
-                username = extract_username(note)
-            if not self._is_bot_mentioned(text):
-                logger.debug(
-                    f"Reply from @{username} does not mention the bot; skipping"
-                )
-                mention_id = None
-            return MentionContext(mention_id, reply_target_id, text, user_id, username)
+            note_data = self._note_payload(note)
+            if not note_data:
+                return MentionContext(None, None, "", None, None)
+            is_reply_event = note.get("type") == "reply"
+            note_id = (
+                note_data.get("id") if isinstance(note_data.get("id"), str) else None
+            )
+            reply_target_id = note_id
+            user_id = extract_user_id(note_data)
+            username = extract_user_handle(note_data)
+            text = (
+                self._parse_reply_text(note_data)
+                if is_reply_event
+                else self._effective_text(note_data)
+            )
+            should_handle = (
+                self._is_reply_to_bot(note_data)
+                if is_reply_event
+                else self._is_bot_mentioned(text) or self._mentions_bot(note_data)
+            )
+            if not should_handle:
+                if not is_reply_event:
+                    display = username or extract_username(note_data)
+                    logger.debug(
+                        f"Mention from @{display} does not mention the bot; skipping"
+                    )
+                note_id = None
+            return MentionContext(note_id, reply_target_id, text, user_id, username)
         except Exception as e:
             logger.error(f"Failed to parse message data: {e}")
             return MentionContext(None, None, "", None, None)
+
+    def _mentions_bot(self, note_data: dict[str, Any]) -> bool:
+        mentions = note_data.get("mentions")
+        if not self.bot.bot_user_id or not isinstance(mentions, list):
+            return False
+        return self.bot.bot_user_id in mentions
 
     def _is_bot_mentioned(self, text: str) -> bool:
         return bool(
@@ -122,12 +190,16 @@ class MentionHandler:
                 logger.debug(f"Mention handled by plugin: {result.get('plugin_name')}")
                 response = result.get("response")
                 if response:
-                    formatted = f"@{mention.username}\n{response}"
+                    formatted = (
+                        f"@{mention.username}\n{response}"
+                        if mention.username
+                        else response
+                    )
                     await self.bot.misskey.create_note(
                         text=formatted, reply_id=mention.reply_target_id
                     )
                     logger.info(
-                        f"Plugin replied to @{mention.username}: {self.bot.format_log_text(formatted)}"
+                        f"Plugin replied to @{mention.username or 'unknown'}: {self.bot.format_log_text(formatted)}"
                     )
                 return True
         return False
@@ -137,12 +209,12 @@ class MentionHandler:
             mention.text, self.bot.system_prompt, **self.bot.ai_config
         )
         logger.debug("Mention reply generated")
-        formatted = f"@{mention.username}\n{reply}"
+        formatted = f"@{mention.username}\n{reply}" if mention.username else reply
         await self.bot.misskey.create_note(
             text=formatted, reply_id=mention.reply_target_id
         )
         logger.info(
-            f"Replied to @{mention.username}: {self.bot.format_log_text(formatted)}"
+            f"Replied to @{mention.username or 'unknown'}: {self.bot.format_log_text(formatted)}"
         )
 
 
@@ -209,6 +281,9 @@ class ChatHandler:
         text = message.get("text") or message.get("content") or message.get("body", "")
         user_id = extract_user_id(message)
         username = extract_username(message)
+        mention_to = extract_user_handle(message) or (
+            username if username != "unknown" else None
+        )
         room_id, room_name = self._parse_room(message)
         has_media = bool(message.get("fileId") or message.get("file"))
         if not isinstance(user_id, str) or not user_id:
@@ -230,18 +305,20 @@ class ChatHandler:
                 username=username, text=text, has_media=has_media, room_label=room_label
             )
             if await self._try_plugin_response(
-                message, conversation_id, user_id, username, room_id
+                message, conversation_id, user_id, username, mention_to, room_id
             ):
                 return
             if not text:
                 return
             await self._generate_ai_response(
-                conversation_id, user_id, username, text, room_id
+                conversation_id, user_id, username, mention_to, text, room_id
             )
 
     async def _send_chat_reply(
-        self, *, user_id: str, room_id: str | None, text: str
+        self, *, user_id: str, room_id: str | None, text: str, mention_to: str | None
     ) -> None:
+        if room_id and mention_to:
+            text = f"@{mention_to}\n{text}"
         if room_id:
             await self.bot.misskey.send_room_message(room_id, text)
         else:
@@ -253,6 +330,7 @@ class ChatHandler:
         conversation_id: str,
         user_id: str,
         username: str,
+        mention_to: str | None,
         room_id: str | None,
     ) -> bool:
         plugin_results = await self.bot.plugin_manager.on_message(message)
@@ -263,6 +341,7 @@ class ChatHandler:
                 conversation_id=conversation_id,
                 user_id=user_id,
                 username=username,
+                mention_to=mention_to,
                 room_id=room_id,
             ):
                 return True
@@ -276,6 +355,7 @@ class ChatHandler:
         conversation_id: str,
         user_id: str,
         username: str,
+        mention_to: str | None,
         room_id: str | None,
     ) -> bool:
         if not (result and result.get("handled")):
@@ -284,7 +364,9 @@ class ChatHandler:
         response = result.get("response")
         if not response:
             return True
-        await self._send_chat_reply(user_id=user_id, room_id=room_id, text=response)
+        await self._send_chat_reply(
+            user_id=user_id, room_id=room_id, text=response, mention_to=mention_to
+        )
         logger.info(
             f"Plugin replied to @{username}: {self.bot.format_log_text(response)}"
         )
@@ -304,6 +386,7 @@ class ChatHandler:
         conversation_id: str,
         user_id: str,
         username: str,
+        mention_to: str | None,
         text: str,
         room_id: str | None,
     ) -> None:
@@ -325,7 +408,9 @@ class ChatHandler:
             messages.append({"role": "user", "content": user_content})
         reply = await self.bot.openai.generate_chat(messages, **self.bot.ai_config)
         logger.debug("Chat reply generated")
-        await self._send_chat_reply(user_id=user_id, room_id=room_id, text=reply)
+        await self._send_chat_reply(
+            user_id=user_id, room_id=room_id, text=reply, mention_to=mention_to
+        )
         logger.info(f"Replied to @{username}: {self.bot.format_log_text(reply)}")
         self.bot.append_chat_turn(conversation_id, user_content, reply, limit)
 
@@ -386,7 +471,10 @@ class ReactionHandler:
 
     async def handle(self, reaction: dict[str, Any]) -> None:
         username = extract_username(reaction)
-        note_id = reaction.get("note", {}).get("id", "unknown")
+        note_id = reaction.get("noteId")
+        if not isinstance(note_id, str) or not note_id:
+            note_id = reaction.get("note", {}).get("id")
+        note_id = note_id if isinstance(note_id, str) and note_id else "unknown"
         reaction_type = reaction.get("reaction", "unknown")
         logger.info(f"User @{username} reacted to note {note_id}: {reaction_type}")
         if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
