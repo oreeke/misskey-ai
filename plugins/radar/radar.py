@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from cachetools import TTLCache
 from loguru import logger
 
 from src.constants import ConfigKeys
@@ -48,10 +47,6 @@ class RadarPlugin(PluginBase):
             self.config.get("renote_local_only"), False
         )
         self.skip_self = True
-        self.dedupe_cache = TTLCache(
-            maxsize=self._parse_int(self.config.get("dedupe_maxsize"), 2000),
-            ttl=self._parse_int(self.config.get("dedupe_ttl_seconds"), 600),
-        )
 
     async def initialize(self) -> bool:
         self._log_plugin_action("initialized", await self._format_antenna_sources())
@@ -182,20 +177,6 @@ class RadarPlugin(PluginBase):
                 return False
         return default
 
-    @staticmethod
-    def _parse_int(value: Any, default: int) -> int:
-        if value is None or isinstance(value, bool):
-            return default
-        if isinstance(value, int):
-            return value
-        if isinstance(value, float):
-            return int(value)
-        if isinstance(value, str):
-            s = value.strip()
-            if s and s.lstrip("+-").isdigit():
-                return int(s)
-        return default
-
     def _normalize_visibility(self, value: Any) -> str | None:
         s = self._normalize_str(value)
         if not s:
@@ -294,15 +275,11 @@ class RadarPlugin(PluginBase):
         if not isinstance(channel, str) or channel != ChannelType.ANTENNA.value:
             return None
         note_id = note_data.get("id")
-        should_skip = (
-            not isinstance(note_id, str) or not note_id or note_id in self.dedupe_cache
-        )
-        if should_skip:
+        if not isinstance(note_id, str) or not note_id:
             return None
         variants = self._extract_user_variants(note_data)
         if self._should_skip_self(note_data, variants):
             return None
-        self.dedupe_cache[note_id] = True
         username = (
             str((note_data.get("user", {}) or {}).get("username", "unknown")).strip()
             or "unknown"

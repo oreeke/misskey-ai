@@ -21,6 +21,3 @@ quote_ai: false                  # AI 自动写一句引用感想（quote_text �
 quote_ai_prompt: ""              # AI 引用提示词（可用 {content}）；留空使用内置默认提示词
 quote_visibility: "home"         # 引用可见性：public/home/followers
 quote_local_only: false          # 引用是否禁用联合（仅本地可见）
-
-dedupe_maxsize: 2000             # 事件去重缓存容量（避免重复处理同一 note）
-dedupe_ttl_seconds: 600          # 去重缓存 TTL（秒）
