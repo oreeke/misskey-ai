@@ -13,8 +13,6 @@ from .constants import (
     CHAT_CACHE_MAX_USERS,
     CHAT_CACHE_TTL,
     ConfigKeys,
-    HANDLED_MENTIONS_CACHE_MAX,
-    HANDLED_MENTIONS_CACHE_TTL,
     USER_LOCK_CACHE_MAX,
     USER_LOCK_TTL,
 )
@@ -50,9 +48,21 @@ class MentionContext:
 class MentionHandler:
     def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
-        self._handled_mentions: TTLCache[str, bool] = TTLCache(
-            maxsize=HANDLED_MENTIONS_CACHE_MAX, ttl=HANDLED_MENTIONS_CACHE_TTL
-        )
+
+    def _should_handle_note(
+        self,
+        *,
+        note_type: str | None,
+        is_reply_event: bool,
+        reply_to_bot: bool,
+        text: str,
+        note_data: dict[str, Any],
+    ) -> bool:
+        if note_type == "mention" and reply_to_bot:
+            return False
+        if is_reply_event:
+            return reply_to_bot
+        return self._is_bot_mentioned(text) or self._mentions_bot(note_data)
 
     @staticmethod
     def _effective_text(note_data: Any) -> str:
@@ -116,8 +126,6 @@ class MentionHandler:
             return
         try:
             async with self.bot.lock_actor(mention.user_id, mention.username):
-                if mention.mention_id in self._handled_mentions:
-                    return
                 display = mention.username or "unknown"
                 logger.info(
                     f"Mention received from @{display}: {self.bot.format_log_text(mention.text)}"
@@ -125,7 +133,6 @@ class MentionHandler:
                 handled = await self._try_plugin_response(mention, note)
                 if not handled:
                     await self._generate_ai_response(mention)
-                self._handled_mentions[mention.mention_id] = True
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
@@ -141,25 +148,28 @@ class MentionHandler:
             note_data = self._note_payload(note)
             if not note_data:
                 return MentionContext(None, None, "", None, None)
-            is_reply_event = note.get("type") == "reply"
+            note_type = note.get("type")
+            is_reply_event = note_type == "reply"
             note_id = (
                 note_data.get("id") if isinstance(note_data.get("id"), str) else None
             )
             reply_target_id = note_id
             user_id = extract_user_id(note_data)
             username = extract_user_handle(note_data)
-            text = (
-                self._parse_reply_text(note_data)
-                if is_reply_event
-                else self._effective_text(note_data)
-            )
-            should_handle = (
-                self._is_reply_to_bot(note_data)
-                if is_reply_event
-                else self._is_bot_mentioned(text) or self._mentions_bot(note_data)
+            if is_reply_event:
+                text = self._parse_reply_text(note_data)
+            else:
+                text = self._effective_text(note_data)
+            reply_to_bot = self._is_reply_to_bot(note_data)
+            should_handle = self._should_handle_note(
+                note_type=note_type,
+                is_reply_event=is_reply_event,
+                reply_to_bot=reply_to_bot,
+                text=text,
+                note_data=note_data,
             )
             if not should_handle:
-                if not is_reply_event:
+                if not is_reply_event and not (note_type == "mention" and reply_to_bot):
                     display = username or extract_username(note_data)
                     logger.debug(
                         f"Mention from @{display} does not mention the bot; skipping"
