@@ -429,6 +429,7 @@ class StreamingClient:
             "reply": lambda: self._wrap_note_event("reply", payload),
             "newChatMessage": lambda: self._wrap_new_chat_message(payload),
             "notification": lambda: self._wrap_notification(payload),
+            "unreadNotification": lambda: self._wrap_notification(payload),
         }
         normalizer = normalizers.get(event_type)
         return normalizer() if normalizer else (event_type, event_data)
@@ -574,6 +575,8 @@ class StreamingClient:
         if event_type == "notification":
             notification = self._extract_dict(event_data, "notification")
             inner_type = notification.get("type") if notification else None
+            if inner_type in {"mention", "reply", "newChatMessage"}:
+                return
             if (
                 isinstance(inner_type, str)
                 and inner_type
