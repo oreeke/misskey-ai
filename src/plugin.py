@@ -346,9 +346,6 @@ class PluginManager:
     async def on_reaction(self, reaction_data: dict[str, Any]) -> list[dict[str, Any]]:
         return await self.call_plugin_hook("on_reaction", reaction_data)
 
-    async def on_renote(self, renote_data: dict[str, Any]) -> list[dict[str, Any]]:
-        return await self.call_plugin_hook("on_renote", renote_data)
-
     async def on_notification(
         self, notification_data: dict[str, Any]
     ) -> list[dict[str, Any]]:

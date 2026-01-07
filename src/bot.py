@@ -502,39 +502,6 @@ class ReactionHandler:
             logger.error(f"Error handling reaction event: {e}")
 
 
-class RenoteHandler:
-    def __init__(self, bot: "MisskeyBot"):
-        self.bot = bot
-
-    async def handle(self, renote: dict[str, Any]) -> None:
-        note = renote.get("note") if isinstance(renote.get("note"), dict) else renote
-        if not isinstance(note, dict):
-            return
-        note_id = note.get("id")
-        if not isinstance(note_id, str) or not note_id:
-            return
-        if self.bot.bot_user_id and extract_user_id(note) == self.bot.bot_user_id:
-            return
-        text = note.get("text")
-        files = note.get("files") or note.get("fileIds") or []
-        has_text = isinstance(text, str) and bool(text.strip())
-        has_files = isinstance(files, list) and bool(files)
-        if not has_text and not has_files:
-            return
-        if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
-            logger.opt(lazy=True).debug(
-                "Renote data: {}",
-                lambda: json.dumps(renote, ensure_ascii=False, indent=2),
-            )
-        try:
-            await self.bot.plugin_manager.on_renote(renote)
-            await self.bot.misskey.create_reaction(note_id, "heart")
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
-            logger.error(f"Error handling renote event: {e}")
-
-
 class NotificationHandler:
     def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
@@ -649,7 +616,6 @@ class BotHandlers:
         self.mention = MentionHandler(bot)
         self.chat = ChatHandler(bot)
         self.reaction = ReactionHandler(bot)
-        self.renote = RenoteHandler(bot)
         self.notification = NotificationHandler(bot)
         self.auto_post = AutoPostService(bot)
 
@@ -661,9 +627,6 @@ class BotHandlers:
 
     async def on_reaction(self, reaction: dict[str, Any]) -> None:
         await self.reaction.handle(reaction)
-
-    async def on_renote(self, renote: dict[str, Any]) -> None:
-        await self.renote.handle(renote)
 
     async def on_notification(self, notification: dict[str, Any]) -> None:
         await self.notification.handle(notification)
@@ -955,7 +918,6 @@ class MisskeyBot:
             self.streaming.on_mention(self.handlers.on_mention)
             self.streaming.on_message(self.handlers.on_message)
             self.streaming.on_reaction(self.handlers.on_reaction)
-            self.streaming.on_renote(self.handlers.on_renote)
             self.streaming.on_notification(self.handlers.on_notification)
             self.streaming.on_note(self.handlers.on_timeline_note)
             channels = await self.get_streaming_channels()

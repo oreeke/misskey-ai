@@ -107,9 +107,6 @@ class StreamingClient:
     def on_note(self, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
         self._add_event_handler("note", handler)
 
-    def on_renote(self, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
-        self._add_event_handler("renote", handler)
-
     def on_notification(
         self, handler: Callable[[dict[str, Any]], Awaitable[None]]
     ) -> None:
@@ -430,7 +427,6 @@ class StreamingClient:
         normalizers = {
             "mention": lambda: self._wrap_note_event("mention", payload),
             "reply": lambda: self._wrap_note_event("reply", payload),
-            "renote": lambda: self._wrap_note_event("renote", payload),
             "newChatMessage": lambda: self._wrap_new_chat_message(payload),
             "notification": lambda: self._normalize_notification_event(payload),
         }
@@ -583,7 +579,6 @@ class StreamingClient:
             "reply": "mention",
             "newChatMessage": "message",
             "reaction": "reaction",
-            "renote": "renote",
             "notification": "notification",
         }
         if event_type == "newChatMessage":
