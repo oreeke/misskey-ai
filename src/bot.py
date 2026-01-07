@@ -25,7 +25,6 @@ from .persistence import PersistenceManager
 from .plugin import PluginManager
 from .runtime import BotRuntime
 from .streaming import ChannelSpec, ChannelType, StreamingClient
-from .transport import ClientSession
 from .utils import (
     extract_user_handle,
     extract_user_id,
@@ -328,7 +327,10 @@ class ChatHandler:
         self, *, user_id: str, room_id: str | None, text: str, mention_to: str | None
     ) -> None:
         if room_id and mention_to:
-            text = f"@{mention_to}\n{text}"
+            mention = mention_to if mention_to.startswith("@") else f"@{mention_to}"
+            stripped = text.lstrip()
+            if not stripped.startswith(mention):
+                text = f"{mention}\n{text}"
         if room_id:
             await self.bot.misskey.send_room_message(room_id, text)
         else:
@@ -500,24 +502,55 @@ class ReactionHandler:
             logger.error(f"Error handling reaction event: {e}")
 
 
-class FollowHandler:
+class RenoteHandler:
     def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
 
-    async def handle(self, follow: dict[str, Any]) -> None:
-        username = extract_username(follow)
-        logger.info(f"User @{username} followed @{self.bot.bot_username}")
+    async def handle(self, renote: dict[str, Any]) -> None:
+        note = renote.get("note") if isinstance(renote.get("note"), dict) else renote
+        if not isinstance(note, dict):
+            return
+        note_id = note.get("id")
+        if not isinstance(note_id, str) or not note_id:
+            return
+        if self.bot.bot_user_id and extract_user_id(note) == self.bot.bot_user_id:
+            return
+        text = note.get("text")
+        files = note.get("files") or note.get("fileIds") or []
+        has_text = isinstance(text, str) and bool(text.strip())
+        has_files = isinstance(files, list) and bool(files)
+        if not has_text and not has_files:
+            return
         if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
             logger.opt(lazy=True).debug(
-                "Follow data: {}",
-                lambda: json.dumps(follow, ensure_ascii=False, indent=2),
+                "Renote data: {}",
+                lambda: json.dumps(renote, ensure_ascii=False, indent=2),
             )
         try:
-            await self.bot.plugin_manager.on_follow(follow)
+            await self.bot.plugin_manager.on_renote(renote)
+            await self.bot.misskey.create_reaction(note_id, "heart")
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            logger.error(f"Error handling follow event: {e}")
+            logger.error(f"Error handling renote event: {e}")
+
+
+class NotificationHandler:
+    def __init__(self, bot: "MisskeyBot"):
+        self.bot = bot
+
+    async def handle(self, notification: dict[str, Any]) -> None:
+        if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
+            logger.opt(lazy=True).debug(
+                "Notification data: {}",
+                lambda: json.dumps(notification, ensure_ascii=False, indent=2),
+            )
+        try:
+            await self.bot.plugin_manager.on_notification(notification)
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            logger.error(f"Error handling notification event: {e}")
 
 
 class AutoPostService:
@@ -616,7 +649,8 @@ class BotHandlers:
         self.mention = MentionHandler(bot)
         self.chat = ChatHandler(bot)
         self.reaction = ReactionHandler(bot)
-        self.follow = FollowHandler(bot)
+        self.renote = RenoteHandler(bot)
+        self.notification = NotificationHandler(bot)
         self.auto_post = AutoPostService(bot)
 
     async def on_mention(self, note: dict[str, Any]) -> None:
@@ -628,8 +662,11 @@ class BotHandlers:
     async def on_reaction(self, reaction: dict[str, Any]) -> None:
         await self.reaction.handle(reaction)
 
-    async def on_follow(self, follow: dict[str, Any]) -> None:
-        await self.follow.handle(follow)
+    async def on_renote(self, renote: dict[str, Any]) -> None:
+        await self.renote.handle(renote)
+
+    async def on_notification(self, notification: dict[str, Any]) -> None:
+        await self.notification.handle(notification)
 
     async def on_timeline_note(self, note: dict[str, Any]) -> None:
         await self.bot.plugin_manager.on_timeline_note(note)
@@ -918,7 +955,8 @@ class MisskeyBot:
             self.streaming.on_mention(self.handlers.on_mention)
             self.streaming.on_message(self.handlers.on_message)
             self.streaming.on_reaction(self.handlers.on_reaction)
-            self.streaming.on_follow(self.handlers.on_follow)
+            self.streaming.on_renote(self.handlers.on_renote)
+            self.streaming.on_notification(self.handlers.on_notification)
             self.streaming.on_note(self.handlers.on_timeline_note)
             channels = await self.get_streaming_channels()
             await self.streaming.connect_once(channels)
@@ -944,7 +982,6 @@ class MisskeyBot:
             await self.streaming.close()
             await self.misskey.close()
             await self.openai.close()
-            await ClientSession.close_session(silent=True)
             await self.persistence.close()
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):

@@ -34,6 +34,7 @@ class ChannelType(str, Enum):
     HYBRID_TIMELINE = "hybridTimeline"
     GLOBAL_TIMELINE = "globalTimeline"
     ANTENNA = "antenna"
+    CHAT_USER = "chatUser"
 
 
 TIMELINE_CHANNELS = frozenset(
@@ -46,6 +47,7 @@ TIMELINE_CHANNELS = frozenset(
 )
 
 NOTE_CHANNELS = frozenset({*TIMELINE_CHANNELS, ChannelType.ANTENNA.value})
+CHAT_CHANNELS = frozenset({ChannelType.CHAT_USER.value})
 
 _EVENT_DATA_LOG_TEMPLATE = "Event data: {}"
 
@@ -73,6 +75,10 @@ class StreamingClient:
         self.running = False
         self.should_reconnect = True
         self._first_connection = True
+        self._chat_channel_tasks: dict[str, asyncio.Task[None]] = {}
+        self._chat_user_channel_ids: dict[str, str] = {}
+        self._chat_channel_other_ids: dict[str, str] = {}
+        self._chat_user_cache: dict[str, dict[str, Any]] = {}
 
     async def __aenter__(self):
         return self
@@ -98,11 +104,16 @@ class StreamingClient:
     def on_reaction(self, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
         self._add_event_handler("reaction", handler)
 
-    def on_follow(self, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
-        self._add_event_handler("follow", handler)
-
     def on_note(self, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
         self._add_event_handler("note", handler)
+
+    def on_renote(self, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
+        self._add_event_handler("renote", handler)
+
+    def on_notification(
+        self, handler: Callable[[dict[str, Any]], Awaitable[None]]
+    ) -> None:
+        self._add_event_handler("notification", handler)
 
     def _add_event_handler(self, event_type: str, handler: Callable) -> None:
         self.event_handlers.setdefault(event_type, []).append(handler)
@@ -146,6 +157,7 @@ class StreamingClient:
     async def disconnect(self) -> None:
         self.should_reconnect = False
         self.running = False
+        self._cancel_chat_channel_tasks()
         await self._disconnect_all_channels()
         await self._close_websocket()
         self.processed_events.clear()
@@ -162,13 +174,15 @@ class StreamingClient:
         )
         if not channel_name:
             raise ValueError("channel name must not be empty")
+        effective_params = params or {}
         existing_channels = [
             ch_id
             for ch_id, ch_info in self.channels.items()
             if ch_info.get("name") == channel_name
+            and ch_info.get("params") == effective_params
         ]
         if existing_channels:
-            logger.warning(
+            logger.debug(
                 f"Channel {channel_name} already connected: {existing_channels}"
             )
             return existing_channels[0]
@@ -178,7 +192,7 @@ class StreamingClient:
             "body": {
                 "channel": channel_name,
                 "id": channel_id,
-                "params": params or {},
+                "params": effective_params,
             },
         }
         if not self._ws_available:
@@ -187,7 +201,7 @@ class StreamingClient:
             )
             raise WebSocketConnectionError()
         await self.ws_connection.send_json(message)
-        self.channels[channel_id] = {"name": channel_name, "params": params or {}}
+        self.channels[channel_id] = {"name": channel_name, "params": effective_params}
         logger.debug(f"Connected channel: {channel_name} (ID: {channel_id})")
         return channel_id
 
@@ -208,6 +222,48 @@ class StreamingClient:
                 await self.ws_connection.send_json(message)
             del self.channels[channel_id]
         logger.debug(f"Disconnected channel: {channel_name}")
+
+    async def disconnect_channel_id(self, channel_id: str) -> None:
+        if not channel_id:
+            return
+        if channel_id in self.channels and self._ws_available:
+            await self.ws_connection.send_json(
+                {"type": "disconnect", "body": {"id": channel_id}}
+            )
+        self.channels.pop(channel_id, None)
+
+    async def send_channel_message(
+        self,
+        channel: ChannelType | str,
+        event_type: str,
+        body: dict[str, Any] | None = None,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> None:
+        channel_name = (
+            channel.value if isinstance(channel, ChannelType) else str(channel)
+        )
+        if not channel_name or not event_type:
+            return
+        channel_id = self._find_channel_id(channel_name, params or {})
+        if not channel_id:
+            return
+        await self._send_channel_message(channel_id, event_type, body or {})
+
+    async def _send_channel_message(
+        self, channel_id: str, event_type: str, body: dict[str, Any]
+    ) -> None:
+        if not self._ws_available:
+            return
+        await self.ws_connection.send_json(
+            {"type": "ch", "body": {"id": channel_id, "type": event_type, "body": body}}
+        )
+
+    def _find_channel_id(self, channel_name: str, params: dict[str, Any]) -> str | None:
+        for ch_id, ch_info in self.channels.items():
+            if ch_info.get("name") == channel_name and ch_info.get("params") == params:
+                return ch_id
+        return None
 
     async def connect_once(self, channels: list[ChannelSpec] | None = None) -> None:
         if self.running:
@@ -330,6 +386,8 @@ class StreamingClient:
             event_body = {}
         event_data: dict[str, Any] = {"type": outer_type, "body": event_body}
         event_type, event_data = self._normalize_channel_event(channel_name, event_data)
+        if isinstance(event_data, dict) and "streamingChannelId" not in event_data:
+            event_data["streamingChannelId"] = channel_id
         event_id = self._extract_event_id(event_data, event_type)
         if self._is_duplicate_event(event_id, event_type):
             return
@@ -346,6 +404,8 @@ class StreamingClient:
         event_type = event_data.get("type")
         if channel_name == ChannelType.MAIN.value:
             return self._normalize_main_channel_event(event_type, event_data)
+        if channel_name in CHAT_CHANNELS:
+            return self._normalize_chat_channel_event(event_type, event_data)
         return event_type, event_data
 
     @staticmethod
@@ -370,17 +430,27 @@ class StreamingClient:
         normalizers = {
             "mention": lambda: self._wrap_note_event("mention", payload),
             "reply": lambda: self._wrap_note_event("reply", payload),
-            "chat": lambda: self._wrap_chat_message(payload),
-            "newChatMessage": lambda: self._wrap_chat_message(payload),
-            "newRoomChatMessage": lambda: self._wrap_chat_message(payload),
-            "follow": lambda: self._wrap_follow_user(payload),
-            "followed": lambda: self._wrap_follow_user(payload),
-            "unfollow": lambda: self._wrap_follow_user(payload),
-            "receiveFollowRequest": lambda: self._wrap_follow_user(payload),
+            "renote": lambda: self._wrap_note_event("renote", payload),
+            "newChatMessage": lambda: self._wrap_new_chat_message(payload),
             "notification": lambda: self._normalize_notification_event(payload),
         }
         normalizer = normalizers.get(event_type)
         return normalizer() if normalizer else (event_type, event_data)
+
+    def _normalize_chat_channel_event(
+        self, event_type: Any, event_data: dict[str, Any]
+    ) -> tuple[str | None, dict[str, Any]]:
+        if event_type != "message":
+            return event_type, event_data
+        payload = event_data.get("body")
+        if not isinstance(payload, dict):
+            return event_type, event_data
+        normalized = dict(payload)
+        normalized.setdefault("type", "message")
+        msg_id = normalized.get("id")
+        if isinstance(msg_id, str) and msg_id:
+            normalized["id"] = msg_id
+        return "message", normalized
 
     @staticmethod
     def _extract_dict(container: dict[str, Any], key: str) -> dict[str, Any] | None:
@@ -396,59 +466,30 @@ class StreamingClient:
             wrapped["id"] = note_id
         return event_type, wrapped
 
-    def _wrap_follow_user(self, user: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        user_id = user.get("id") if isinstance(user.get("id"), str) else None
-        wrapped: dict[str, Any] = {"type": "follow", "user": user}
-        if user_id:
-            wrapped["id"] = user_id
-        return "follow", wrapped
-
-    def _wrap_chat_message(self, message: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    @staticmethod
+    def _wrap_new_chat_message(message: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         normalized = dict(message)
-        if "type" not in normalized:
-            normalized["type"] = "chat"
-        return "chat", normalized
+        normalized["type"] = "newChatMessage"
+        return "newChatMessage", normalized
+
+    @staticmethod
+    def _wrap_notification(payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        wrapped: dict[str, Any] = {"type": "notification", "notification": payload}
+        notification_id = payload.get("id")
+        if isinstance(notification_id, str) and notification_id:
+            wrapped["id"] = notification_id
+        return "notification", wrapped
 
     def _normalize_notification_event(
         self, payload: dict[str, Any]
     ) -> tuple[str | None, dict[str, Any]]:
         inner_type = payload.get("type")
         if not isinstance(inner_type, str) or not inner_type:
-            return "notification", payload
+            return self._wrap_notification(payload)
 
-        normalizers = {
-            "mention": lambda: self._normalize_notification_note(payload, "mention"),
-            "reply": lambda: self._normalize_notification_note(payload, "reply"),
-            "follow": lambda: self._normalize_notification_follow(payload),
-            "followed": lambda: self._normalize_notification_follow(payload),
-            "unfollow": lambda: self._normalize_notification_follow(payload),
-            "receiveFollowRequest": lambda: self._normalize_notification_follow(
-                payload
-            ),
-            "chat": lambda: self._normalize_notification_chat(payload),
-            "reaction": lambda: ("reaction", payload),
-        }
-        normalizer = normalizers.get(inner_type)
-        normalized = normalizer() if normalizer else None
-        return normalized if normalized else ("notification", payload)
-
-    def _normalize_notification_note(
-        self, payload: dict[str, Any], event_type: str
-    ) -> tuple[str | None, dict[str, Any]] | None:
-        note = self._extract_dict(payload, "note")
-        return self._wrap_note_event(event_type, note) if note else None
-
-    def _normalize_notification_follow(
-        self, payload: dict[str, Any]
-    ) -> tuple[str | None, dict[str, Any]] | None:
-        user = self._extract_dict(payload, "user")
-        return self._wrap_follow_user(user) if user else None
-
-    def _normalize_notification_chat(
-        self, payload: dict[str, Any]
-    ) -> tuple[str | None, dict[str, Any]] | None:
-        message = self._extract_dict(payload, "message")
-        return self._wrap_chat_message(message) if message else None
+        if inner_type == "reaction":
+            return "reaction", payload
+        return self._wrap_notification(payload)
 
     def _ensure_workers_started(self) -> None:
         if self._workers:
@@ -528,6 +569,9 @@ class StreamingClient:
         if channel_name == ChannelType.MAIN.value:
             await self._handle_main_channel_event(event_type, event_data)
             return
+        if channel_name in CHAT_CHANNELS:
+            await self._handle_chat_channel_event(channel_name, event_type, event_data)
+            return
         if channel_name in NOTE_CHANNELS:
             await self._handle_note_channel_event(channel_name, event_type, event_data)
 
@@ -537,10 +581,13 @@ class StreamingClient:
         handler_map = {
             "mention": "mention",
             "reply": "mention",
-            "chat": "message",
+            "newChatMessage": "message",
             "reaction": "reaction",
-            "follow": "follow",
+            "renote": "renote",
+            "notification": "notification",
         }
+        if event_type == "newChatMessage":
+            await self._ensure_chat_user_stream(event_data)
         if event_type in handler_map:
             await self._call_handlers(handler_map[event_type], event_data)
         else:
@@ -550,6 +597,99 @@ class StreamingClient:
                     _EVENT_DATA_LOG_TEMPLATE,
                     lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
                 )
+
+    async def _handle_chat_channel_event(
+        self, channel_name: str, event_type: str, event_data: dict[str, Any]
+    ) -> None:
+        if event_type != "message":
+            logger.debug(f"Unknown {channel_name} channel event type: {event_type}")
+            if self.log_dump_events:
+                logger.opt(lazy=True).debug(
+                    _EVENT_DATA_LOG_TEMPLATE,
+                    lambda: json.dumps(event_data, ensure_ascii=False, indent=2),
+                )
+            return
+        message = dict(event_data)
+        from_user_id = message.get("fromUserId")
+        if (
+            isinstance(from_user_id, str)
+            and from_user_id
+            and "fromUser" not in message
+            and from_user_id in self._chat_user_cache
+        ):
+            message["fromUser"] = self._chat_user_cache[from_user_id]
+        channel_id = message.get("streamingChannelId")
+        msg_id = message.get("id")
+        if (
+            isinstance(channel_id, str)
+            and channel_id
+            and isinstance(msg_id, str)
+            and msg_id
+        ):
+            await self._send_channel_message(channel_id, "read", {"id": msg_id})
+            self._refresh_chat_channel_timer(channel_id)
+        await self._call_handlers("message", message)
+
+    async def _ensure_chat_user_stream(self, message: dict[str, Any]) -> None:
+        other_id = message.get("fromUserId")
+        if not isinstance(other_id, str) or not other_id:
+            return
+        from_user = message.get("fromUser")
+        if isinstance(from_user, dict):
+            self._chat_user_cache[other_id] = from_user
+        try:
+            channel_id = await self.connect_channel(
+                ChannelType.CHAT_USER, {"otherId": other_id}
+            )
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            logger.debug(f"Failed to connect chatUser channel for {other_id}: {e}")
+            return
+        self._chat_user_channel_ids[other_id] = channel_id
+        self._chat_channel_other_ids[channel_id] = other_id
+        if task := self._chat_channel_tasks.get(channel_id):
+            task.cancel()
+        self._chat_channel_tasks[channel_id] = asyncio.create_task(
+            self._disconnect_chat_channel_later(other_id, channel_id),
+            name=f"chatUser-disconnect-{other_id}",
+        )
+
+    async def _disconnect_chat_channel_later(
+        self, other_id: str, channel_id: str
+    ) -> None:
+        try:
+            await asyncio.sleep(120)
+            await self.disconnect_channel_id(channel_id)
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            logger.debug(f"Failed to disconnect chatUser channel {channel_id}: {e}")
+        finally:
+            if self._chat_user_channel_ids.get(other_id) == channel_id:
+                self._chat_user_channel_ids.pop(other_id, None)
+            self._chat_channel_other_ids.pop(channel_id, None)
+            self._chat_channel_tasks.pop(channel_id, None)
+
+    def _refresh_chat_channel_timer(self, channel_id: str) -> None:
+        other_id = self._chat_channel_other_ids.get(channel_id)
+        if not other_id:
+            return
+        if task := self._chat_channel_tasks.get(channel_id):
+            task.cancel()
+        self._chat_channel_tasks[channel_id] = asyncio.create_task(
+            self._disconnect_chat_channel_later(other_id, channel_id),
+            name=f"chatUser-disconnect-{other_id}",
+        )
+
+    def _cancel_chat_channel_tasks(self) -> None:
+        tasks = list(self._chat_channel_tasks.values())
+        self._chat_channel_tasks.clear()
+        self._chat_user_channel_ids.clear()
+        self._chat_channel_other_ids.clear()
+        self._chat_user_cache.clear()
+        for task in tasks:
+            task.cancel()
 
     async def _handle_note_channel_event(
         self, channel_name: str, event_type: str, event_data: dict[str, Any]
@@ -614,4 +754,6 @@ class StreamingClient:
             return None
         if not event_type:
             return event_id
+        if event_type in {"newChatMessage", "message"}:
+            return f"chatMessage:{event_id}"
         return f"{event_type}:{event_id}"
