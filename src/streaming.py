@@ -428,7 +428,7 @@ class StreamingClient:
             "mention": lambda: self._wrap_note_event("mention", payload),
             "reply": lambda: self._wrap_note_event("reply", payload),
             "newChatMessage": lambda: self._wrap_new_chat_message(payload),
-            "notification": lambda: self._normalize_notification_event(payload),
+            "notification": lambda: self._wrap_notification(payload),
         }
         normalizer = normalizers.get(event_type)
         return normalizer() if normalizer else (event_type, event_data)
@@ -475,17 +475,6 @@ class StreamingClient:
         if isinstance(notification_id, str) and notification_id:
             wrapped["id"] = notification_id
         return "notification", wrapped
-
-    def _normalize_notification_event(
-        self, payload: dict[str, Any]
-    ) -> tuple[str | None, dict[str, Any]]:
-        inner_type = payload.get("type")
-        if not isinstance(inner_type, str) or not inner_type:
-            return self._wrap_notification(payload)
-
-        if inner_type == "reaction":
-            return "reaction", payload
-        return self._wrap_notification(payload)
 
     def _ensure_workers_started(self) -> None:
         if self._workers:
@@ -578,12 +567,22 @@ class StreamingClient:
             "mention": "mention",
             "reply": "mention",
             "newChatMessage": "message",
-            "reaction": "reaction",
             "notification": "notification",
         }
         if event_type == "newChatMessage":
             await self._ensure_chat_user_stream(event_data)
-        if event_type in handler_map:
+        if event_type == "notification":
+            notification = self._extract_dict(event_data, "notification")
+            inner_type = notification.get("type") if notification else None
+            if (
+                isinstance(inner_type, str)
+                and inner_type
+                and inner_type in self.event_handlers
+            ):
+                await self._call_handlers(inner_type, notification)
+            else:
+                await self._call_handlers("notification", event_data)
+        elif event_type in handler_map:
             await self._call_handlers(handler_map[event_type], event_data)
         else:
             logger.debug(f"Unknown main channel event type: {event_type}")
