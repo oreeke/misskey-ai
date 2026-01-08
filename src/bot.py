@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from cachetools import TTLCache
@@ -15,6 +16,8 @@ from .constants import (
     CHAT_CACHE_MAX_USERS,
     CHAT_CACHE_TTL,
     ConfigKeys,
+    RESPONSE_LIMIT_CACHE_MAX,
+    RESPONSE_LIMIT_CACHE_TTL,
     USER_LOCK_CACHE_MAX,
     USER_LOCK_TTL,
 )
@@ -39,20 +42,8 @@ __all__ = ("MisskeyBot",)
 _DURATION_PART_RE = re.compile(r"\s*(\d+(?:\.\d+)?)\s*([a-z]+)?", re.IGNORECASE)
 _DURATION_UNITS: dict[str, int] = {
     "h": 3600,
-    "hr": 3600,
-    "hrs": 3600,
-    "hour": 3600,
-    "hours": 3600,
     "m": 60,
-    "min": 60,
-    "mins": 60,
-    "minute": 60,
-    "minutes": 60,
     "s": 1,
-    "sec": 1,
-    "secs": 1,
-    "second": 1,
-    "seconds": 1,
 }
 
 
@@ -117,13 +108,13 @@ class MentionHandler:
     async def _maybe_send_blocked_reply(self, mention: MentionContext) -> bool:
         if not mention.user_id:
             return False
-        blocked = self.bot.get_response_block_reply(
+        blocked = await self.bot.get_response_block_reply(
             user_id=mention.user_id, handle=mention.username
         )
         if not blocked:
             return False
         await self._send_mention_reply(mention, blocked)
-        self.bot.record_response(mention.user_id, count_turn=False)
+        await self.bot.record_response(mention.user_id, count_turn=False)
         return True
 
     def _should_handle_note(
@@ -185,6 +176,10 @@ class MentionHandler:
             return
         mention = self._parse(note)
         if not mention.mention_id or self._is_self_mention(mention):
+            return
+        if mention.user_id and self.bot.is_response_blacklisted_user(
+            user_id=mention.user_id, handle=mention.username
+        ):
             return
         try:
             async with self.bot.lock_actor(mention.user_id, mention.username):
@@ -280,7 +275,7 @@ class MentionHandler:
                 f"Plugin replied to @{mention.username or 'unknown'}: {self.bot.format_log_text(formatted)}"
             )
             if mention.user_id:
-                self.bot.record_response(mention.user_id, count_turn=True)
+                await self.bot.record_response(mention.user_id, count_turn=True)
 
     async def _generate_ai_response(self, mention: MentionContext) -> None:
         reply = await self.bot.openai.generate_text(
@@ -295,7 +290,7 @@ class MentionHandler:
             f"Replied to @{mention.username or 'unknown'}: {self.bot.format_log_text(formatted)}"
         )
         if mention.user_id:
-            self.bot.record_response(mention.user_id, count_turn=True)
+            await self.bot.record_response(mention.user_id, count_turn=True)
 
 
 class ChatHandler:
@@ -360,6 +355,10 @@ class ChatHandler:
     async def _process(self, message: dict[str, Any]) -> None:
         ctx = self._parse_chat_context(message)
         if not ctx:
+            return
+        if self.bot.is_response_blacklisted_user(
+            user_id=ctx.user_id, handle=ctx.handle or ctx.mention_to
+        ):
             return
         async with self.bot.lock_actor(ctx.actor_id, ctx.username):
             self._log_incoming_chat(
@@ -427,7 +426,7 @@ class ChatHandler:
         )
 
     async def _maybe_send_blocked_reply(self, ctx: _ChatContext) -> bool:
-        blocked = self.bot.get_response_block_reply(
+        blocked = await self.bot.get_response_block_reply(
             user_id=ctx.user_id,
             handle=ctx.handle or ctx.mention_to,
         )
@@ -439,7 +438,7 @@ class ChatHandler:
             text=blocked,
             mention_to=ctx.mention_to,
         )
-        self.bot.record_response(ctx.user_id, count_turn=False)
+        await self.bot.record_response(ctx.user_id, count_turn=False)
         return True
 
     async def _send_chat_reply(
@@ -501,7 +500,7 @@ class ChatHandler:
         logger.info(
             f"Plugin replied to @{username}: {self.bot.format_log_text(response)}"
         )
-        self.bot.record_response(user_id, count_turn=True)
+        await self.bot.record_response(user_id, count_turn=True)
         user_text = message.get("text") or message.get("content") or ""
         if user_text:
             user_content = f"{username}: {user_text}" if room_id else user_text
@@ -544,7 +543,7 @@ class ChatHandler:
             user_id=user_id, room_id=room_id, text=reply, mention_to=mention_to
         )
         logger.info(f"Replied to @{username}: {self.bot.format_log_text(reply)}")
-        self.bot.record_response(user_id, count_turn=True)
+        await self.bot.record_response(user_id, count_turn=True)
         self.bot.append_chat_turn(conversation_id, user_content, reply, limit)
 
     async def get_chat_history(
@@ -781,7 +780,9 @@ class MisskeyBot:
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Initialization failed: {e}")
             raise ConfigurationError() from e
-        self.persistence = PersistenceManager(config.get(ConfigKeys.DB_PATH))
+        self.persistence = PersistenceManager(
+            config.get(ConfigKeys.DB_PATH), config=config
+        )
         self.runtime = BotRuntime(self)
         self.plugin_manager = PluginManager(
             config,
@@ -805,7 +806,7 @@ class MisskeyBot:
             maxsize=CHAT_CACHE_MAX_USERS, ttl=CHAT_CACHE_TTL
         )
         self._response_limits: TTLCache[str, _ResponseLimitState] = TTLCache(
-            maxsize=5000, ttl=2592000
+            maxsize=RESPONSE_LIMIT_CACHE_MAX, ttl=RESPONSE_LIMIT_CACHE_TTL
         )
         self.handlers = BotHandlers(self)
         self.timeline_channels = self._load_timeline_channels()
@@ -862,8 +863,8 @@ class MisskeyBot:
         s = str(value).strip()
         return [s] if s else []
 
-    def _load_response_exclude_users(self) -> set[str]:
-        value = self.config.get(ConfigKeys.BOT_RESPONSE_EXCLUDE_USERS)
+    @staticmethod
+    def _parse_user_list(value: Any) -> set[str]:
         if value is None or isinstance(value, bool):
             return set()
         if isinstance(value, str):
@@ -875,17 +876,53 @@ class MisskeyBot:
         s = str(value).strip()
         return {s.lower()} if s else set()
 
-    def _is_response_excluded_user(self, *, user_id: str, handle: str | None) -> bool:
-        excluded = self._load_response_exclude_users()
-        if not excluded:
-            return False
+    def _canonicalize_user_handle(self, username: str) -> str | None:
+        misskey = getattr(self, "misskey", None)
+        instance_url = getattr(misskey, "instance_url", None) if misskey else None
+        if not isinstance(instance_url, str) or not instance_url:
+            return None
+        host = urlparse(instance_url).hostname
+        return f"{username}@{host}" if host else None
+
+    def _user_candidates(self, *, user_id: str, handle: str | None) -> set[str]:
         candidates = {user_id.lower()}
         if handle:
-            normalized = handle.lower().lstrip("@")
-            if "@" in normalized:
+            normalized = handle.lower().lstrip("@").strip()
+            if normalized:
                 candidates.add(normalized)
                 candidates.add(f"@{normalized}")
-        return any(c in excluded for c in candidates)
+                if "@" not in normalized and (
+                    canonical := self._canonicalize_user_handle(normalized)
+                ):
+                    candidates.add(canonical)
+                    candidates.add(f"@{canonical}")
+        return candidates
+
+    def _load_response_whitelist_users(self) -> set[str]:
+        return self._parse_user_list(self.config.get(ConfigKeys.BOT_RESPONSE_WHITELIST))
+
+    def _load_response_blacklist_users(self) -> set[str]:
+        return self._parse_user_list(self.config.get(ConfigKeys.BOT_RESPONSE_BLACKLIST))
+
+    def _is_response_whitelisted_user(
+        self, *, user_id: str, handle: str | None
+    ) -> bool:
+        whitelist = self._load_response_whitelist_users()
+        if not whitelist:
+            return False
+        return any(
+            c in whitelist
+            for c in self._user_candidates(user_id=user_id, handle=handle)
+        )
+
+    def is_response_blacklisted_user(self, *, user_id: str, handle: str | None) -> bool:
+        blacklist = self._load_response_blacklist_users()
+        if not blacklist:
+            return False
+        return any(
+            c in blacklist
+            for c in self._user_candidates(user_id=user_id, handle=handle)
+        )
 
     @staticmethod
     def _parse_duration_seconds(value: Any) -> int | None:
@@ -937,18 +974,45 @@ class MisskeyBot:
             return -1
         return seconds
 
-    def _get_response_limit_state(self, user_id: str) -> _ResponseLimitState:
-        if user_id not in self._response_limits:
-            self._response_limits[user_id] = _ResponseLimitState()
-        return self._response_limits[user_id]
+    async def _get_response_limit_state(self, user_id: str) -> _ResponseLimitState:
+        if user_id in self._response_limits:
+            return self._response_limits[user_id]
+        last_reply_ts = None
+        turns = 0
+        blocked_until_ts = None
+        row = await self.persistence.get_response_limit_state(user_id)
+        if row:
+            last_reply_ts, turns, blocked_until_ts = row
+            if blocked_until_ts == -1:
+                blocked_until_ts = float("inf")
+        state = _ResponseLimitState(
+            last_reply_ts=last_reply_ts,
+            turns=int(turns or 0),
+            blocked_until_ts=blocked_until_ts,
+        )
+        self._response_limits[user_id] = state
+        return state
 
-    def get_response_block_reply(
+    async def _save_response_limit_state(
+        self, user_id: str, state: _ResponseLimitState
+    ) -> None:
+        blocked_until_ts = state.blocked_until_ts
+        if blocked_until_ts == float("inf"):
+            blocked_until_ts = -1
+        await self.persistence.set_response_limit_state(
+            user_id=user_id,
+            last_reply_ts=state.last_reply_ts,
+            turns=state.turns,
+            blocked_until_ts=blocked_until_ts,
+        )
+
+    async def get_response_block_reply(
         self, *, user_id: str, handle: str | None
     ) -> str | None:
-        if self._is_response_excluded_user(user_id=user_id, handle=handle):
+        if self._is_response_whitelisted_user(user_id=user_id, handle=handle):
             return None
         now = time.time()
-        state = self._get_response_limit_state(user_id)
+        state = await self._get_response_limit_state(user_id)
         if (
             state.blocked_until_ts is not None
             and state.blocked_until_ts != float("inf")
@@ -956,6 +1020,7 @@ class MisskeyBot:
         ):
             state.turns = 0
             state.blocked_until_ts = None
+            await self._save_response_limit_state(user_id, state)
         if state.blocked_until_ts is not None and now < state.blocked_until_ts:
             return self.config.get(ConfigKeys.BOT_RESPONSE_MAX_TURNS_REPLY)
         interval = self._duration_config_seconds(ConfigKeys.BOT_RESPONSE_RATE_LIMIT)
@@ -974,14 +1039,16 @@ class MisskeyBot:
                 state.blocked_until_ts = float("inf")
             else:
                 state.blocked_until_ts = now + release
+            await self._save_response_limit_state(user_id, state)
             return self.config.get(ConfigKeys.BOT_RESPONSE_MAX_TURNS_REPLY)
         return None
 
-    def record_response(self, user_id: str, *, count_turn: bool) -> None:
-        state = self._get_response_limit_state(user_id)
+    async def record_response(self, user_id: str, *, count_turn: bool) -> None:
+        state = await self._get_response_limit_state(user_id)
         state.last_reply_ts = time.time()
         if count_turn:
             state.turns += 1
+        await self._save_response_limit_state(user_id, state)
 
     @staticmethod
     def _build_antenna_index(
@@ -1144,6 +1211,7 @@ class MisskeyBot:
         cron_jobs = [
             (self.runtime.reset_daily_counters, 0),
             (self.persistence.vacuum, 2),
+            (self.persistence.cleanup_response_limit_state, 3),
         ]
         for func, hour in cron_jobs:
             self.scheduler.add_job(func, "cron", hour=hour, minute=0, second=0)

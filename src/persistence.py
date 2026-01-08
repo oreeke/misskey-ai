@@ -58,10 +58,15 @@ class ConnectionPool:
 
 
 class PersistenceManager:
-    def __init__(self, db_path: str | None = None, max_connections: int = 10):
-        self.config = Config()
+    def __init__(
+        self,
+        db_path: str | None = None,
+        max_connections: int = 10,
+        config: Config | None = None,
+    ):
+        self.config = config or Config()
         if db_path is None:
-            db_path = self.config._get_builtin_default(ConfigKeys.DB_PATH)
+            db_path = self.config.get(ConfigKeys.DB_PATH)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(exist_ok=True)
         self._pool = ConnectionPool(str(self.db_path), max_connections)
@@ -106,9 +111,19 @@ class PersistenceManager:
                 UNIQUE(plugin_name, key)
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS response_limit_state (
+                user_id TEXT PRIMARY KEY,
+                last_reply_ts REAL,
+                turns INTEGER NOT NULL DEFAULT 0,
+                blocked_until_ts REAL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
         ]
         index_statements = [
             "CREATE INDEX IF NOT EXISTS idx_plugin_data_name_key ON plugin_data(plugin_name, key)",
+            "CREATE INDEX IF NOT EXISTS idx_response_limit_state_updated ON response_limit_state(updated_at)",
         ]
         async with conn.execute("BEGIN TRANSACTION"):
             for statement in schema_statements:
@@ -150,6 +165,55 @@ class PersistenceManager:
         await self._execute(
             "INSERT OR REPLACE INTO plugin_data (plugin_name, key, value, updated_at) VALUES (?, ?, ?, ?)",
             (plugin_name, key, value, datetime.now()),
+            "update",
+        )
+
+    async def get_response_limit_state(
+        self, user_id: str
+    ) -> tuple[float | None, int, float | None] | None:
+        result = await self._execute(
+            "SELECT last_reply_ts, turns, blocked_until_ts FROM response_limit_state WHERE user_id = ?",
+            (user_id,),
+        )
+        if not result:
+            return None
+        last_reply_ts, turns, blocked_until_ts = result
+        turns_value = int(turns) if turns is not None else 0
+        return last_reply_ts, turns_value, blocked_until_ts
+
+    async def set_response_limit_state(
+        self,
+        *,
+        user_id: str,
+        last_reply_ts: float | None,
+        turns: int,
+        blocked_until_ts: float | None,
+    ) -> None:
+        await self._execute(
+            """
+            INSERT OR REPLACE INTO response_limit_state
+                (user_id, last_reply_ts, turns, blocked_until_ts, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user_id, last_reply_ts, int(turns), blocked_until_ts, datetime.now()),
+            "update",
+        )
+
+    async def cleanup_response_limit_state(
+        self, *, max_age_days: int | None = None
+    ) -> int:
+        if max_age_days is None:
+            max_age_days = self.config.get(ConfigKeys.DB_CLEAR)
+        if not isinstance(max_age_days, int):
+            max_age_days = 30
+        if max_age_days < 0:
+            return 0
+        if max_age_days == 0:
+            return await self._execute("DELETE FROM response_limit_state", (), "update")
+        cutoff = int(datetime.now().timestamp() - (max_age_days * 86400))
+        return await self._execute(
+            "DELETE FROM response_limit_state WHERE CAST(strftime('%s', updated_at) AS INTEGER) < ?",
+            (cutoff,),
             "update",
         )
 

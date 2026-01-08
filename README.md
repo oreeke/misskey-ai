@@ -86,9 +86,16 @@ bot:
     max_turns: -1                                   # 回复次数限制：同一用户最多对话轮数（机器人回复次数）；-1 不限制
     max_turns_reply: "我要回家了..."                 # 次数限制回复文案
     max_turns_release: -1                           # 次数限制解除时间：超限后多久解除；-1 不解除；30s/5m/1h
-    exclude_users:                                  # 排除用户列表：username@host/userId，这些用户不受以上限制
+    whitelist:                                      # 白名单：username@host/userId，这些用户不受以上限制
       - "admin@example.com"
       - "user-id-123"
+    blacklist:                                      # 黑名单：username@host/userId，这些用户禁止使用回复
+      - "admin@example.com"
+      - "user-id-123"
+
+db:
+  path: "data/misskey_ai.db"                        # SQLite 路径
+  clear: 30                                         # SQLite 数据保留天数（不含插件）；-1 不清理
 
 log:
   level: "INFO"                                     # 日志级别 (DEBUG/INFO/WARNING/ERROR)
@@ -163,13 +170,16 @@ BOT_RESPONSE_RATE_LIMIT_REPLY=我需要休息一下...             # 速率限�
 BOT_RESPONSE_MAX_TURNS=-1                                  # 回复次数限制：同一用户最多对话轮数（机器人回复次数）；-1 不限制
 BOT_RESPONSE_MAX_TURNS_REPLY=我要回家了...                  # 次数限制回复文案
 BOT_RESPONSE_MAX_TURNS_RELEASE=-1                          # 次数限制解除时间：超限后多久解除；-1 不解除；30s/5m/1h
-BOT_RESPONSE_EXCLUDE_USERS=                                # 排除用户列表：username@host/userId，这些用户不受以上限制
+BOT_RESPONSE_WHITELIST=                                    # 白名单：username@host/userId，这些用户不受以上限制
+BOT_RESPONSE_BLACKLIST=                                    # 黑名单：username@host/userId，这些用户禁止使用回复
 BOT_TIMELINE_ENABLED=false                                 # 是否订阅时间线
 BOT_TIMELINE_HOME=false                                    # homeTimeline
 BOT_TIMELINE_LOCAL=false                                   # localTimeline
 BOT_TIMELINE_HYBRID=false                                  # hybridTimeline
 BOT_TIMELINE_GLOBAL=false                                  # globalTimeline
 BOT_TIMELINE_ANTENNA_IDS=                                  # antenna ID 或名称（逗号/空格分隔）
+DB_PATH=data/misskey_ai.db                                 # SQLite 路径
+DB_CLEAR=30                                                # SQLite 数据保留天数（不含插件）；-1 不清理
 LOG_LEVEL=INFO                                             # 日志级别 (DEBUG/INFO/WARNING/ERROR)
 LOG_DUMP_EVENTS=false                                      # 是否输出事件原始数据（DEBUG）
 ```

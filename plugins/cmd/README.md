@@ -28,10 +28,15 @@
 | `^timeline reset` | 按配置文件恢复订阅集合 |
 | `^antenna` | 查看天线订阅状态 |
 | `^antenna list` | 天线列表 |
+| `^antenna add <天线名\|ID>` | 添加天线订阅 |
+| `^antenna del <天线名\|ID>` | 移除天线订阅 |
 | `^antenna <天线名\|ID>` | 切换天线 |
-| `^antenna set <天线名\|ID>` | 切换天线 |
+| `^antenna set <天线名\|ID>` | 覆盖天线订阅集合 |
 | `^antenna clear` | 清空天线订阅 |
+| `^antenna reset` | 按配置文件恢复天线订阅集合 |
 | `^cache` | 内存使用情况 |
 | `^cacheclear [chat\|locks\|events\|all]` | 清理内存缓存 |
+| `^whitelist [list\|add\|del\|set\|clear\|reset]` | 查看/修改白名单 |
+| `^blacklist [list\|add\|del\|set\|clear\|reset]` | 查看/修改黑名单 |
 | `^dbstats` | 数据库统计 |
 | `^dbclear <插件名> [键名]` | 清理插件数据 |

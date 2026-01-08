@@ -22,7 +22,8 @@ class ConfigKeys:
     BOT_RESPONSE_MAX_TURNS = "bot.response.max_turns"
     BOT_RESPONSE_MAX_TURNS_REPLY = "bot.response.max_turns_reply"
     BOT_RESPONSE_MAX_TURNS_RELEASE = "bot.response.max_turns_release"
-    BOT_RESPONSE_EXCLUDE_USERS = "bot.response.exclude_users"
+    BOT_RESPONSE_WHITELIST = "bot.response.whitelist"
+    BOT_RESPONSE_BLACKLIST = "bot.response.blacklist"
     BOT_TIMELINE_ENABLED = "bot.timeline.enabled"
     BOT_TIMELINE_HOME = "bot.timeline.home"
     BOT_TIMELINE_LOCAL = "bot.timeline.local"
@@ -30,6 +31,7 @@ class ConfigKeys:
     BOT_TIMELINE_GLOBAL = "bot.timeline.global"
     BOT_TIMELINE_ANTENNA_IDS = "bot.timeline.antenna_ids"
     DB_PATH = "db.path"
+    DB_CLEAR = "db.clear"
     LOG_PATH = "log.path"
     LOG_LEVEL = "log.level"
     LOG_DUMP_EVENTS = "log.dump_events"
@@ -63,6 +65,9 @@ STREAM_QUEUE_PUT_TIMEOUT = 1.0
 
 STREAM_DEDUP_CACHE_MAX = 2000
 STREAM_DEDUP_CACHE_TTL = 600
+
+RESPONSE_LIMIT_CACHE_MAX = 2000
+RESPONSE_LIMIT_CACHE_TTL = 86400
 
 CHAT_CACHE_MAX_USERS = 1000
 CHAT_CACHE_TTL = 3600

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Any
 from urllib.parse import urlparse
 
@@ -22,6 +23,21 @@ class CmdPlugin(PluginBase):
         self.allowed_users = self.config.get("allowed_users", [])
         self.commands = self.config.get("commands", {})
         self._setup_default_commands()
+        self._baseline_response_whitelist = self._normalize_user_list(
+            self.global_config.get(ConfigKeys.BOT_RESPONSE_WHITELIST)
+            if self.global_config
+            else []
+        )
+        self._baseline_response_blacklist = self._normalize_user_list(
+            self.global_config.get(ConfigKeys.BOT_RESPONSE_BLACKLIST)
+            if self.global_config
+            else []
+        )
+        self._baseline_antenna_selectors = self._normalize_antenna_selectors(
+            self.global_config.get(ConfigKeys.BOT_TIMELINE_ANTENNA_IDS)
+            if self.global_config
+            else []
+        )
 
     def _setup_default_commands(self):
         if not self.commands:
@@ -47,16 +63,24 @@ class CmdPlugin(PluginBase):
                     "aliases": [],
                 },
                 "timeline": {
-                    "description": "查看/切换时间线订阅 (用法: timeline [status|add|del|set|clear|reset] ...)",
+                    "description": "查看/切换时间线订阅 (用法: timeline [status|add|del|set|clear|reset])",
                     "aliases": [],
                 },
                 "antenna": {
-                    "description": "查看/切换天线订阅 (用法: antenna [status|list|set|clear] ...)",
+                    "description": "查看/切换天线订阅 (用法: antenna [status|list|add|del|set|clear|reset])",
                     "aliases": [],
                 },
                 "cache": {"description": "内存使用情况", "aliases": []},
                 "cacheclear": {
                     "description": "清理内存缓存 (用法: cacheclear [chat|locks|events|all])",
+                    "aliases": [],
+                },
+                "whitelist": {
+                    "description": "查看/修改白名单 (用法: whitelist [list|add|del|set|clear|reset])",
+                    "aliases": [],
+                },
+                "blacklist": {
+                    "description": "查看/修改黑名单 (用法: blacklist [list|add|del|set|clear|reset])",
                     "aliases": [],
                 },
                 "dbstats": {"description": "数据库统计", "aliases": []},
@@ -71,18 +95,18 @@ class CmdPlugin(PluginBase):
         return True
 
     async def on_startup(self) -> None:
-        if not getattr(self, "persistence_manager", None) or not getattr(
-            self, "openai", None
-        ):
+        if not getattr(self, "persistence_manager", None):
             return
-        model = await self.persistence_manager.get_plugin_data(
-            self.name, ConfigKeys.OPENAI_MODEL
-        )
-        if not model:
-            return
-        self.openai.model = model
-        self._set_global_config_value(ConfigKeys.OPENAI_MODEL, model)
-        self._log_plugin_action("applied model override", model)
+        if getattr(self, "openai", None):
+            model = await self.persistence_manager.get_plugin_data(
+                self.name, ConfigKeys.OPENAI_MODEL
+            )
+            if model:
+                self.openai.model = model
+                self._set_global_config_value(ConfigKeys.OPENAI_MODEL, model)
+                self._log_plugin_action("applied model override", model)
+        await self._apply_saved_response_user_list(ConfigKeys.BOT_RESPONSE_WHITELIST)
+        await self._apply_saved_response_user_list(ConfigKeys.BOT_RESPONSE_BLACKLIST)
 
     def _is_authorized(self, user_id: str, handle: str | None) -> bool:
         return user_id in self.allowed_users or (
@@ -129,6 +153,18 @@ class CmdPlugin(PluginBase):
             "antenna": lambda: self._handle_antenna(args),
             "cache": self._get_memory_usage,
             "cacheclear": lambda: self._clear_memory_caches(args),
+            "whitelist": lambda: self._handle_response_user_list(
+                "whitelist",
+                ConfigKeys.BOT_RESPONSE_WHITELIST,
+                args,
+                self._baseline_response_whitelist,
+            ),
+            "blacklist": lambda: self._handle_response_user_list(
+                "blacklist",
+                ConfigKeys.BOT_RESPONSE_BLACKLIST,
+                args,
+                self._baseline_response_blacklist,
+            ),
             "dbstats": self._get_db_stats,
             "dbclear": lambda: self._clear_plugin_data(args),
         }
@@ -151,11 +187,10 @@ class CmdPlugin(PluginBase):
             alias_text = f" ({', '.join(aliases)})" if aliases else ""
             entries.append((f"^{cmd_name}{alias_text}", desc))
         max_width = max((len(left) for left, _ in entries), default=0)
-        help_lines = ["可用命令:", "```"]
+        help_lines = []
         for left, desc in entries:
             help_lines.append(f"  {left.ljust(max_width)} - {desc}")
-        help_lines.append("```")
-        return "\n".join(help_lines)
+        return self._format_code_block("可用命令", help_lines)
 
     def _get_status_text(self) -> str:
         status = "运行中" if health_check() else "异常"
@@ -219,11 +254,10 @@ class CmdPlugin(PluginBase):
             status = "已启用" if plugin.get("enabled", False) else "已禁用"
             entries.append((name, desc, status))
         max_width = max((len(name) for name, _, _ in entries), default=0)
-        info_lines = ["插件信息:", "```"]
+        info_lines = []
         for name, desc, status in entries:
             info_lines.append(f"  {name.ljust(max_width)} - [{status}] {desc}")
-        info_lines.append("```")
-        return "\n".join(info_lines)
+        return self._format_code_block("插件信息", info_lines)
 
     async def _toggle_plugin(self, plugin_name: str, enable: bool) -> str:
         if not plugin_name.strip():
@@ -340,6 +374,116 @@ class CmdPlugin(PluginBase):
         return f"已切换模型: {model}"
 
     @staticmethod
+    def _normalize_user_list(value: Any) -> list[str]:
+        if value is None or isinstance(value, bool):
+            return []
+        if isinstance(value, str):
+            tokens = [t.strip() for t in value.replace(",", " ").split() if t.strip()]
+        elif isinstance(value, list):
+            tokens = [str(v).strip() for v in value if v is not None and str(v).strip()]
+        else:
+            s = str(value).strip()
+            tokens = [s] if s else []
+        seen: set[str] = set()
+        result: list[str] = []
+        for t in tokens:
+            k = t.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            result.append(k)
+        return result
+
+    @staticmethod
+    def _format_code_block(title: str, lines: list[str]) -> str:
+        t = (title or "").strip()
+        if not t:
+            t = "输出"
+        if not t.endswith((":", "：")):
+            t += ":"
+        body = [line for line in lines if isinstance(line, str)]
+        if not body:
+            body = ["(空)"]
+        return "\n".join([t, "```", *body, "```"])
+
+    @staticmethod
+    def _format_user_list(label: str, items: list[str]) -> str:
+        return CmdPlugin._format_code_block(label, items if items else ["(空)"])
+
+    async def _apply_saved_response_user_list(self, key: str) -> None:
+        if not getattr(self, "persistence_manager", None):
+            return
+        saved = await self.persistence_manager.get_plugin_data(self.name, key)
+        if not saved:
+            return
+        try:
+            decoded = json.loads(saved)
+        except json.JSONDecodeError:
+            decoded = saved
+        normalized = self._normalize_user_list(decoded)
+        self._set_global_config_value(key, normalized)
+        self._log_plugin_action("applied config override", f"{key}={len(normalized)}")
+
+    async def _save_response_user_list(self, key: str, items: list[str]) -> None:
+        self._set_global_config_value(key, items)
+        if not getattr(self, "persistence_manager", None):
+            return
+        await self.persistence_manager.set_plugin_data(
+            self.name, key, json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+        )
+
+    async def _reset_response_user_list(self, key: str, baseline: list[str]) -> None:
+        self._set_global_config_value(key, list(baseline))
+        if not getattr(self, "persistence_manager", None):
+            return
+        await self.persistence_manager.delete_plugin_data(self.name, key)
+
+    async def _handle_response_user_list(
+        self, label: str, key: str, args: str, baseline: list[str]
+    ) -> str:
+        if not getattr(self, "global_config", None):
+            return "全局配置未注入"
+        raw = args.strip()
+        current = self._normalize_user_list(self.global_config.get(key))
+        if not raw:
+            return self._format_user_list(label, current)
+        parts = raw.split(maxsplit=1)
+        action = parts[0].lower()
+        rest = parts[1] if len(parts) > 1 else ""
+        if action in {"list", "status", "show"}:
+            return self._format_user_list(label, current)
+        if action in {"clear", "empty"}:
+            await self._save_response_user_list(key, [])
+            return f"已清空 {label}\n" + self._format_user_list(label, [])
+        if action in {"reset", "default"}:
+            await self._reset_response_user_list(key, baseline)
+            return f"已恢复 {label}\n" + self._format_user_list(label, list(baseline))
+        if action in {"add", "+", "append"}:
+            items = self._normalize_user_list(rest)
+            if not items:
+                return f"用法: ^{label} add <username@host|userId>"
+            s = set(current)
+            updated = current + [i for i in items if i not in s]
+            await self._save_response_user_list(key, updated)
+            return f"已更新 {label}\n" + self._format_user_list(label, updated)
+        if action in {"del", "remove", "-"}:
+            items = set(self._normalize_user_list(rest))
+            if not items:
+                return f"用法: ^{label} del <username@host|userId>"
+            updated = [i for i in current if i not in items]
+            await self._save_response_user_list(key, updated)
+            return f"已更新 {label}\n" + self._format_user_list(label, updated)
+        if action in {"set", "="}:
+            items = self._normalize_user_list(rest)
+            await self._save_response_user_list(key, items)
+            return f"已更新 {label}\n" + self._format_user_list(label, items)
+        return (
+            f"用法: ^{label} [list|add|del|set|clear|reset]\n"
+            f"示例: ^{label} add admin@example.com user-id-123\n"
+            f"示例: ^{label} del user-id-123"
+        )
+
+    @staticmethod
     def _timeline_name_map() -> dict[str, str]:
         mapped = {
             "home": ChannelType.HOME_TIMELINE.value,
@@ -390,7 +534,7 @@ class CmdPlugin(PluginBase):
             return "已清空时间线订阅\n" + self._format_timeline_status()
         if action not in {"add", "enable", "del", "remove", "disable", "set"}:
             return (
-                "用法: ^timeline [status|add|del|set|clear|reset] ...\n"
+                "用法: ^timeline [status|add|del|set|clear|reset]\n"
                 "示例: ^timeline add home\n"
                 "示例: ^timeline set home local\n"
                 "可选: home/local/hybrid/global"
@@ -520,6 +664,74 @@ class CmdPlugin(PluginBase):
             lines.append(f"  {name} - {antenna_id}")
         return "\n".join(lines)
 
+    async def _resolve_antenna_selectors(
+        self, selectors: list[str], *, strict: bool
+    ) -> tuple[list[str], str | None]:
+        misskey = getattr(self, "misskey", None)
+        if not misskey:
+            deduped = [s.strip() for s in selectors if s.strip()]
+            return list(dict.fromkeys(deduped)), None
+        antennas = await misskey.list_antennas()
+        antenna_ids, name_to_ids, _ = self._build_antenna_index(antennas)
+        error_templates = {
+            "not_found": "未知天线: {selector}\n使用 ^antenna list 查看可选天线",
+            "ambiguous": "天线名称不唯一: {selector}\n请使用天线 ID",
+        }
+        resolved: list[str] = []
+        for selector in (s.strip() for s in selectors):
+            if not selector:
+                continue
+            antenna_id, _, err = self._resolve_antenna_selector(
+                selector, antenna_ids, name_to_ids
+            )
+            if err:
+                if strict and (template := error_templates.get(err)):
+                    return [], template.format(selector=selector)
+                continue
+            if antenna_id:
+                resolved.append(antenna_id)
+        return list(dict.fromkeys(resolved)), None
+
+    async def _apply_antenna_selectors(self, selectors: list[str], message: str) -> str:
+        bot = getattr(self, "bot", None)
+        if not bot:
+            return _MSG_BOT_NOT_INJECTED_ANTENNA
+        self._set_global_config_value(ConfigKeys.BOT_TIMELINE_ANTENNA_IDS, selectors)
+        await bot.restart_streaming()
+        return message + "\n" + await self._format_antenna_status()
+
+    async def _reset_antenna(self) -> str:
+        selectors = list(self._baseline_antenna_selectors)
+        resolved, _ = await self._resolve_antenna_selectors(selectors, strict=False)
+        return await self._apply_antenna_selectors(resolved, "已重置天线订阅")
+
+    async def _update_antenna_selectors(self, args: str, *, mode: str) -> str:
+        bot = getattr(self, "bot", None)
+        if not bot:
+            return _MSG_BOT_NOT_INJECTED_ANTENNA
+        if not getattr(self, "global_config", None):
+            return "全局配置未注入"
+        raw = args.strip()
+        selectors = self._normalize_antenna_selectors(raw)
+        if not selectors:
+            return "请指定天线名称或 ID"
+        current_selectors = self._normalize_antenna_selectors(
+            self.global_config.get(ConfigKeys.BOT_TIMELINE_ANTENNA_IDS)
+        )
+        current_ids, _ = await self._resolve_antenna_selectors(
+            current_selectors, strict=False
+        )
+        target_ids, err = await self._resolve_antenna_selectors(selectors, strict=True)
+        if err:
+            return err
+        if mode == "add":
+            merged = list(dict.fromkeys([*current_ids, *target_ids]))
+            return await self._apply_antenna_selectors(merged, "已添加天线订阅")
+        if mode == "del":
+            remaining = [i for i in current_ids if i not in set(target_ids)]
+            return await self._apply_antenna_selectors(remaining, "已移除天线订阅")
+        return await self._apply_antenna_selectors(target_ids, "已设置天线订阅")
+
     async def _set_antenna_selector(self, selector: str) -> str:
         bot = getattr(self, "bot", None)
         if not bot:
@@ -557,22 +769,40 @@ class CmdPlugin(PluginBase):
         bot = getattr(self, "bot", None)
         if not bot:
             return _MSG_BOT_NOT_INJECTED_ANTENNA
-        self._set_global_config_value(ConfigKeys.BOT_TIMELINE_ANTENNA_IDS, [])
-        await bot.restart_streaming()
-        return "已清空天线订阅\n" + await self._format_antenna_status()
+        return await self._apply_antenna_selectors([], "已清空天线订阅")
 
     async def _handle_antenna(self, args: str) -> str:
         tokens = args.strip().split()
         if not tokens or tokens[0].lower() in {"status", "show"}:
             return await self._format_antenna_status()
         action = tokens[0].lower()
+        if action in {"reset", "default"}:
+            return await self._reset_antenna()
         if action in {"list", "ls"}:
             return await self._list_antennas()
         if action in {"clear", "off", "disable"}:
             return await self._clear_antenna()
-        if action in {"set", "switch", "to"}:
+        if action in {"add", "enable"}:
+            rest = " ".join(tokens[1:]).strip()
+            return await self._update_antenna_selectors(rest, mode="add")
+        if action in {"del", "remove"}:
+            rest = " ".join(tokens[1:]).strip()
+            return await self._update_antenna_selectors(rest, mode="del")
+        if action == "set":
+            rest = " ".join(tokens[1:]).strip()
+            return await self._update_antenna_selectors(rest, mode="set")
+        if action in {"switch", "to"}:
             rest = " ".join(tokens[1:]).strip()
             return await self._set_antenna_selector(rest)
+        if action in {"help", "usage"}:
+            return (
+                "用法: ^antenna [status|list|add|del|set|clear|reset]\n"
+                "示例: ^antenna list\n"
+                "示例: ^antenna add 天线A\n"
+                "示例: ^antenna del 天线A\n"
+                "示例: ^antenna set 天线A,天线B\n"
+                "可选: 天线名或 ID（多个用空格/逗号分隔）"
+            )
         return await self._set_antenna_selector(args)
 
     def _create_response(self, response_text: str) -> dict[str, Any] | None:
