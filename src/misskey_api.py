@@ -396,13 +396,12 @@ class MisskeyAPI:
     def _reply_visibility_missing(
         reply_id: str, visibility: str | None, validate_reply: bool
     ) -> tuple[str | None, str | None]:
+        msg = "Target note not found"
         if validate_reply:
-            logger.warning(
-                f"Target note not found; creating a new note instead of a reply: {reply_id}"
-            )
+            logger.warning(f"{msg}; creating a new note instead of a reply: {reply_id}")
             return None, visibility
         logger.warning(
-            f"Target note not found; keeping replyId without visibility adjustment: {reply_id}"
+            f"{msg}; keeping replyId without visibility adjustment: {reply_id}"
         )
         return reply_id, visibility
 
@@ -415,24 +414,17 @@ class MisskeyAPI:
         *,
         retried: bool,
     ) -> tuple[str | None, str | None]:
-        if validate_reply:
-            if retried:
-                logger.warning(
-                    f"Failed to get original note after retries; creating a new note instead of a reply: {reply_id} - {error}"
-                )
-            else:
-                logger.warning(
-                    f"Failed to get original note; creating a new note instead of a reply: {reply_id} - {error}"
-                )
-            return None, visibility
+        msg = "Failed to get original note"
         if retried:
+            msg += " after retries"
+        if validate_reply:
             logger.warning(
-                f"Failed to get original note after retries; keeping replyId without visibility adjustment: {reply_id} - {error}"
+                f"{msg}; creating a new note instead of a reply: {reply_id} - {error}"
             )
-        else:
-            logger.warning(
-                f"Failed to get original note; keeping replyId without visibility adjustment: {reply_id} - {error}"
-            )
+            return None, visibility
+        logger.warning(
+            f"{msg}; keeping replyId without visibility adjustment: {reply_id} - {error}"
+        )
         return reply_id, visibility
 
     async def get_note(self, note_id: str) -> dict[str, Any]:
