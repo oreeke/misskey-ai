@@ -191,6 +191,28 @@ class MisskeyAPI:
             logger.warning(f"API rate limited: {endpoint}")
             raise APIRateLimitError()
 
+    @staticmethod
+    def _format_error_text(error_text: str) -> str:
+        s = error_text.strip()
+        if not s:
+            return ""
+        try:
+            obj = json.loads(s)
+        except json.JSONDecodeError:
+            return s
+        if not isinstance(obj, dict):
+            return s
+        err = obj.get("error")
+        if not isinstance(err, dict):
+            return s
+        code = err.get("code") or err.get("id")
+        msg = err.get("message") or err.get("info") or err.get("kind")
+        if isinstance(code, str) and isinstance(msg, str):
+            return f"{code}: {msg}"
+        if isinstance(msg, str):
+            return msg
+        return s
+
     async def _process_response(self, response, endpoint: str):
         if response.status in (HTTP_OK, HTTP_NO_CONTENT):
             if response.status == HTTP_NO_CONTENT:
@@ -205,16 +227,30 @@ class MisskeyAPI:
                     logger.debug(f"Misskey API request succeeded: {endpoint}")
                     return {}
                 raise APIConnectionError()
-        self.handle_response_status(response, endpoint)
-        error_text = await response.text()
-        logger.error(f"API request failed: {response.status} - {error_text}")
-        raise APIConnectionError()
+        error_text = self._format_error_text(await response.text())
+        status = response.status
+        if status == HTTP_BAD_REQUEST:
+            logger.error(f"API bad request: {endpoint} - {error_text}")
+            raise APIBadRequestError(error_text)
+        if status in (HTTP_UNAUTHORIZED, HTTP_FORBIDDEN):
+            logger.error(f"API authentication failed: {endpoint} - {error_text}")
+            raise AuthenticationError(error_text)
+        if status == HTTP_TOO_MANY_REQUESTS:
+            logger.warning(f"API rate limited: {endpoint} - {error_text}")
+            raise APIRateLimitError(error_text)
+        logger.error(f"API request failed: {status} - {endpoint} - {error_text}")
+        raise APIConnectionError(error_text)
 
     @retry_async(
         max_retries=API_MAX_RETRIES,
         retryable_exceptions=(APIConnectionError, APIRateLimitError),
     )
     async def make_request(
+        self, endpoint: str, data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return await self._make_request_once(endpoint, data)
+
+    async def _make_request_once(
         self, endpoint: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         url = f"{self.instance_url}/api/{endpoint}"
@@ -312,33 +348,53 @@ class MisskeyAPI:
         visibility: str | None,
         validate_reply: bool,
     ) -> tuple[str | None, str | None]:
-        try:
-            original_note = await self.get_note(reply_id)
-            original_visibility = original_note.get("visibility", "public")
-            adjusted = self._determine_reply_visibility(original_visibility, visibility)
-            return reply_id, adjusted
-        except (
-            APIBadRequestError,
-            APIConnectionError,
-            APIRateLimitError,
-            AuthenticationError,
-        ) as e:
-            return self._handle_reply_lookup_failure(
-                reply_id, visibility, validate_reply, e
+        delays = (0.0, 2.0)
+        for delay in delays:
+            if delay:
+                await asyncio.sleep(delay)
+            result = await self._try_resolve_reply_visibility(
+                reply_id, visibility, validate_reply, is_last=delay == delays[-1]
             )
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
-            return self._handle_reply_lookup_failure(
-                reply_id, visibility, validate_reply, e
-            )
+            if result is not None:
+                return result
+        return None, visibility
 
-    @staticmethod
-    def _handle_reply_lookup_failure(
+    async def _try_resolve_reply_visibility(
+        self,
         reply_id: str,
         visibility: str | None,
         validate_reply: bool,
-        error: Exception,
+        *,
+        is_last: bool,
+    ) -> tuple[str | None, str | None] | None:
+        try:
+            original_note = await self._make_request_once(
+                "notes/show", {"noteId": reply_id}
+            )
+            original_visibility = original_note.get("visibility", "public")
+            return reply_id, self._determine_reply_visibility(
+                original_visibility, visibility
+            )
+        except APIBadRequestError:
+            return self._reply_visibility_missing(reply_id, visibility, validate_reply)
+        except (APIConnectionError, APIRateLimitError) as e:
+            if not is_last:
+                return None
+            return self._reply_visibility_unavailable(
+                reply_id, visibility, validate_reply, e, retried=True
+            )
+        except AuthenticationError:
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            return self._reply_visibility_unavailable(
+                reply_id, visibility, validate_reply, e, retried=False
+            )
+
+    @staticmethod
+    def _reply_visibility_missing(
+        reply_id: str, visibility: str | None, validate_reply: bool
     ) -> tuple[str | None, str | None]:
         if validate_reply:
             logger.warning(
@@ -346,24 +402,41 @@ class MisskeyAPI:
             )
             return None, visibility
         logger.warning(
-            f"Failed to get original note visibility; using default: {error}"
+            f"Target note not found; keeping replyId without visibility adjustment: {reply_id}"
         )
-        return reply_id, visibility if visibility is not None else "home"
+        return reply_id, visibility
+
+    @staticmethod
+    def _reply_visibility_unavailable(
+        reply_id: str,
+        visibility: str | None,
+        validate_reply: bool,
+        error: Exception,
+        *,
+        retried: bool,
+    ) -> tuple[str | None, str | None]:
+        if validate_reply:
+            if retried:
+                logger.warning(
+                    f"Failed to get original note after retries; creating a new note instead of a reply: {reply_id} - {error}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to get original note; creating a new note instead of a reply: {reply_id} - {error}"
+                )
+            return None, visibility
+        if retried:
+            logger.warning(
+                f"Failed to get original note after retries; keeping replyId without visibility adjustment: {reply_id} - {error}"
+            )
+        else:
+            logger.warning(
+                f"Failed to get original note; keeping replyId without visibility adjustment: {reply_id} - {error}"
+            )
+        return reply_id, visibility
 
     async def get_note(self, note_id: str) -> dict[str, Any]:
         return await self.make_request("notes/show", {"noteId": note_id})
-
-    async def note_exists(self, note_id: str) -> bool:
-        try:
-            await self.get_note(note_id)
-            return True
-        except (
-            APIBadRequestError,
-            APIConnectionError,
-            APIRateLimitError,
-            AuthenticationError,
-        ):
-            return False
 
     async def get_current_user(self) -> dict[str, Any]:
         return await self.make_request("i", {})
@@ -447,7 +520,10 @@ class MisskeyAPI:
             data["sinceId"] = since_id
         try:
             return await self.make_request("chat/messages/room-timeline", data)
-        except APIBadRequestError:
+        except APIBadRequestError as e:
+            m = str(e)
+            if m and "roomId" not in m and "toRoomId" not in m:
+                raise
             data = {"toRoomId": room_id, "limit": limit}
             if since_id:
                 data["sinceId"] = since_id
@@ -669,7 +745,7 @@ class MisskeyDrive:
             dest.parent.mkdir(parents=True, exist_ok=True)
         try:
             session: aiohttp.ClientSession = self._api.session
-            async with session.get(url) as response:
+            async with self._api.semaphore, session.get(url) as response:
                 if response.status != HTTP_OK:
                     self._api.handle_response_status(response, "drive/files/download")
                     raise APIConnectionError()
