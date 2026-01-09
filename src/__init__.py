@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-_MISSKEY_API_MODULE = ".misskey_api"
+_MISSKEY_API_MODULE = ".clients.misskey_api"
+_MISSKEY_DRIVE_MODULE = ".clients.misskey_drive"
+_CHANNELS_MODULE = ".clients.channels"
 _PLUGIN_MODULE = ".plugin"
 
 __all__ = [
@@ -27,38 +29,40 @@ __all__ = [
 ]
 
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "MisskeyBot": (".bot", "MisskeyBot"),
-    "BotRunner": (".main", "BotRunner"),
-    "BotRuntime": (".runtime", "BotRuntime"),
-    "Config": (".config", "Config"),
-    "ConfigKeys": (".constants", "ConfigKeys"),
+    "MisskeyBot": (".bot.bot", "MisskeyBot"),
+    "BotRunner": (".app.main", "BotRunner"),
+    "BotRuntime": (".bot.runtime", "BotRuntime"),
+    "Config": (".shared.config", "Config"),
+    "ConfigKeys": (".shared.constants", "ConfigKeys"),
     "MisskeyAPI": (_MISSKEY_API_MODULE, "MisskeyAPI"),
-    "MisskeyDrive": (_MISSKEY_API_MODULE, "MisskeyDrive"),
-    "DriveIO": (_MISSKEY_API_MODULE, "DriveIO"),
-    "OpenAIAPI": (".openai_api", "OpenAIAPI"),
-    "StreamingClient": (".streaming", "StreamingClient"),
-    "ChannelType": (".streaming", "ChannelType"),
-    "PersistenceManager": (".persistence", "PersistenceManager"),
-    "ConnectionPool": (".persistence", "ConnectionPool"),
+    "MisskeyDrive": (_MISSKEY_DRIVE_MODULE, "MisskeyDrive"),
+    "DriveIO": (_MISSKEY_DRIVE_MODULE, "DriveIO"),
+    "OpenAIAPI": (".clients.openai_api", "OpenAIAPI"),
+    "StreamingClient": (".clients.streaming", "StreamingClient"),
+    "ChannelType": (_CHANNELS_MODULE, "ChannelType"),
+    "PersistenceManager": (".storage.persistence", "PersistenceManager"),
+    "ConnectionPool": (".storage.persistence", "ConnectionPool"),
     "PluginBase": (_PLUGIN_MODULE, "PluginBase"),
     "PluginContext": (_PLUGIN_MODULE, "PluginContext"),
     "PluginManager": (_PLUGIN_MODULE, "PluginManager"),
-    "TCPClient": (".transport", "TCPClient"),
-    "ClientSession": (".transport", "ClientSession"),
+    "TCPClient": (".clients.transport", "TCPClient"),
+    "ClientSession": (".clients.transport", "ClientSession"),
 }
 
 if TYPE_CHECKING:
-    from .bot import MisskeyBot
-    from .config import Config
-    from .constants import ConfigKeys
-    from .main import BotRunner
-    from .misskey_api import DriveIO, MisskeyAPI, MisskeyDrive
-    from .openai_api import OpenAIAPI
-    from .persistence import ConnectionPool, PersistenceManager
+    from .app.main import BotRunner
+    from .bot.bot import MisskeyBot
     from .plugin import PluginBase, PluginContext, PluginManager
-    from .runtime import BotRuntime
-    from .streaming import ChannelType, StreamingClient
-    from .transport import ClientSession, TCPClient
+    from .bot.runtime import BotRuntime
+    from .clients.misskey_api import MisskeyAPI
+    from .clients.misskey_drive import DriveIO, MisskeyDrive
+    from .clients.openai_api import OpenAIAPI
+    from .clients.channels import ChannelType
+    from .clients.streaming import StreamingClient
+    from .clients.transport import ClientSession, TCPClient
+    from .shared.config import Config
+    from .shared.constants import ConfigKeys
+    from .storage.persistence import ConnectionPool, PersistenceManager
 
 
 def __getattr__(name: str) -> Any:

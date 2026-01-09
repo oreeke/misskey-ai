@@ -6,10 +6,10 @@ from urllib.parse import urlparse
 import aiosqlite
 from loguru import logger
 
-from src.constants import ConfigKeys
 from src.plugin import PluginBase
-from src.streaming import ChannelType
-from src.utils import get_memory_usage, get_system_info, health_check, normalize_tokens
+from src.clients.streaming import ChannelType
+from src.shared.constants import ConfigKeys
+from src.shared.utils import get_memory_usage, get_system_info, health_check, normalize_tokens
 
 _MSG_SPECIFY_PLUGIN_NAME = "请指定插件名称"
 _MSG_BOT_NOT_INJECTED_ANTENNA = "Bot 未注入，无法管理天线订阅"

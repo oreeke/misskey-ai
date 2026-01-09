@@ -6,8 +6,8 @@ from typing import Any
 import aiosqlite
 from loguru import logger
 
-from .config import Config
-from .constants import ConfigKeys
+from ..shared.config import Config
+from ..shared.constants import ConfigKeys
 
 __all__ = ("PersistenceManager", "ConnectionPool")
 

@@ -6,10 +6,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
 
-from .bot import MisskeyBot
-from .config import Config
-from .constants import ConfigKeys
-from .exceptions import APIConnectionError, AuthenticationError, ConfigurationError
+from ..bot.bot import MisskeyBot
+from ..shared.config import Config
+from ..shared.constants import ConfigKeys
+from ..shared.exceptions import (
+    APIConnectionError,
+    AuthenticationError,
+    ConfigurationError,
+)
 
 
 class BotRunner:

@@ -339,7 +339,7 @@ class Config:
 
     def _load_from_file(self, file_path: str) -> str:
         try:
-            project_root = Path(__file__).resolve().parents[1]
+            project_root = Path(__file__).resolve().parents[2]
             path = Path(file_path)
             if not path.is_absolute():
                 path = Path(self.config_path).parent / path
@@ -429,7 +429,6 @@ class Config:
     def _validate_types_and_ranges(self) -> None:
         for item in _CONFIG_ITEMS:
             self._require_type(item.key, item.types, item.desc)
-
         mode = self._normalize_lower(
             self._require_type(ConfigKeys.OPENAI_API_MODE, (str,), "OpenAI API mode")
         )

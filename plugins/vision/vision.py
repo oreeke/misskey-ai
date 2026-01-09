@@ -4,8 +4,8 @@ from typing import Any
 
 from loguru import logger
 
-from src.constants import ConfigKeys
 from src.plugin import PluginBase
+from src.shared.constants import ConfigKeys
 
 
 class VisionPlugin(PluginBase):

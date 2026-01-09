@@ -1,15 +1,16 @@
 import asyncio
 import json
 import uuid
-from enum import Enum
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import aiohttp
 from cachetools import TTLCache
 from loguru import logger
 
-from .constants import (
+from .channels import CHAT_CHANNELS, NOTE_CHANNELS, ChannelSpec, ChannelType
+from ..shared.constants import (
     RECEIVE_TIMEOUT,
     STREAM_QUEUE_MAX,
     STREAM_QUEUE_PUT_TIMEOUT,
@@ -18,36 +19,11 @@ from .constants import (
     STREAM_DEDUP_CACHE_TTL,
     WS_MAX_RETRIES,
 )
-from .exceptions import WebSocketConnectionError, WebSocketReconnectError
+from ..shared.exceptions import WebSocketConnectionError, WebSocketReconnectError
+from ..shared.utils import redact_misskey_access_token
 from .transport import ClientSession
-from .utils import redact_misskey_access_token
 
-__all__ = ("ChannelType", "StreamingClient")
-
-ChannelSpec = str | tuple[str, dict[str, Any]]
-
-
-class ChannelType(str, Enum):
-    MAIN = "main"
-    HOME_TIMELINE = "homeTimeline"
-    LOCAL_TIMELINE = "localTimeline"
-    HYBRID_TIMELINE = "hybridTimeline"
-    GLOBAL_TIMELINE = "globalTimeline"
-    ANTENNA = "antenna"
-    CHAT_USER = "chatUser"
-
-
-TIMELINE_CHANNELS = frozenset(
-    {
-        ChannelType.HOME_TIMELINE.value,
-        ChannelType.LOCAL_TIMELINE.value,
-        ChannelType.HYBRID_TIMELINE.value,
-        ChannelType.GLOBAL_TIMELINE.value,
-    }
-)
-
-NOTE_CHANNELS = frozenset({*TIMELINE_CHANNELS, ChannelType.ANTENNA.value})
-CHAT_CHANNELS = frozenset({ChannelType.CHAT_USER.value})
+__all__ = ("StreamingClient",)
 
 _EVENT_DATA_LOG_TEMPLATE = "Event data: {}"
 
@@ -283,10 +259,18 @@ class StreamingClient:
             self._first_connection = False
 
     async def _connect_websocket(self) -> None:
-        base_ws_url = self.instance_url.replace("https://", "wss://").replace(
-            "http://", "ws://"
-        )
-        ws_url = f"{base_ws_url}/streaming?i={self.access_token}"
+        raw = self.instance_url.strip().rstrip("/")
+        if "://" not in raw:
+            raw = f"https://{raw}"
+        parsed = urlsplit(raw)
+        scheme = (parsed.scheme or "").lower()
+        if scheme != "https":
+            raise ValueError("Insecure instance URL scheme is not allowed")
+        base_ws_url = urlunsplit(
+            ("wss", parsed.netloc, parsed.path.rstrip("/"), "", "")
+        ).rstrip("/")
+        qs = urlencode({"i": self.access_token})
+        ws_url = f"{base_ws_url}/streaming?{qs}"
         safe_url = f"{base_ws_url}/streaming"
         try:
             self.ws_connection = await self.transport.ws_connect(ws_url)
@@ -423,7 +407,6 @@ class StreamingClient:
         payload = event_data.get("body")
         if not isinstance(payload, dict):
             return event_type, event_data
-
         normalizers = {
             "mention": lambda: self._wrap_note_event("mention", payload),
             "reply": lambda: self._wrap_note_event("reply", payload),
