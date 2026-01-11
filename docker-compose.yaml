@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
 
     volumes:
+      # 挂载插件配置
       # - ./plugins/your_plugin/config.yaml:/app/plugins/your_plugin/config.yaml:ro
       - ./data:/app/data
       - ./logs:/app/logs
@@ -45,13 +46,3 @@ services:
       - DB_CLEAR=30                                                # SQLite 数据保留天数（不含插件）；-1 不清理
       - LOG_LEVEL=INFO                                             # 日志级别 (DEBUG/INFO/WARNING/ERROR)
       - LOG_DUMP_EVENTS=false                                      # 是否输出事件原始数据（DEBUG）
-
-    # env_file:
-    #   - .env
-
-    healthcheck:
-      test: ["CMD", "python", "-c", "from src.shared.utils import health_check; exit(0 if health_check() else 1)"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s

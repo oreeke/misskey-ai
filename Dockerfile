@@ -1,40 +1,26 @@
-FROM python:3.11-slim AS builder
-
-WORKDIR /build
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc && \
-    python -m venv /opt/venv && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-ENV PATH="/opt/venv/bin:$PATH"
-
-COPY requirements.txt ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-FROM python:3.11-slim AS runtime
+ARG PYTHON_IMAGE=python:3.11-slim
+FROM ${PYTHON_IMAGE}
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=utf-8 \
-    PATH="/opt/venv/bin:$PATH"
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-RUN groupadd -r botuser && useradd -r -g botuser botuser && \
+COPY requirements.txt ./
+RUN python -m pip install -r requirements.txt
+
+COPY src /app/src
+COPY plugins /app/plugins
+COPY run.py /app/run.py
+
+RUN useradd -r -u 10001 -m -U -s /usr/sbin/nologin appuser && \
     mkdir -p /app/logs /app/data && \
-    chown -R botuser:botuser /app/logs /app/data && \
-    chmod 0750 /app/logs /app/data && \
-    chmod 0555 /app
+    chown -R appuser:appuser /app/logs /app/data
 
-COPY --from=builder /opt/venv /opt/venv
-COPY --chown=root:root --chmod=0555 src /app/src
-COPY --chown=root:root --chmod=0555 plugins /app/plugins
-COPY --chown=root:root --chmod=0444 run.py /app/run.py
-
-USER botuser
+USER appuser
 
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 --start-period=30s \
     CMD python -c "from src.shared.utils import health_check; exit(0 if health_check() else 1)"

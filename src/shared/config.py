@@ -6,7 +6,6 @@ from typing import Any
 
 import anyio
 import yaml
-from loguru import logger
 
 from .constants import ConfigKeys
 from .exceptions import ConfigurationError
@@ -288,26 +287,32 @@ class Config:
 
     async def load(self) -> None:
         config_path = Path(self.config_path)
-        if not config_path.exists():
-            raise ConfigurationError()
-        try:
-            async with await anyio.open_file(config_path, "r", encoding="utf-8") as f:
-                content = await f.read()
-            self.data = yaml.safe_load(content) or {}
-            if not isinstance(self.data, dict):
-                raise ConfigurationError("config file root node must be an object")
-            logger.debug(f"Loaded config file: {config_path}")
+        loaded_from_file = False
+        if config_path.exists():
+            try:
+                if not config_path.is_file():
+                    raise ConfigurationError(
+                        f"config path is not a file: {config_path}"
+                    )
+                async with await anyio.open_file(
+                    config_path, "r", encoding="utf-8"
+                ) as f:
+                    content = await f.read()
+                self.data = yaml.safe_load(content) or {}
+                if not isinstance(self.data, dict):
+                    raise ConfigurationError("config file root node must be an object")
+                loaded_from_file = True
+            except UnicodeDecodeError as e:
+                raise ConfigurationError(f"Config file decode error: {e}") from e
+            except yaml.YAMLError as e:
+                raise ConfigurationError(f"YAML config parse error: {e}") from e
+            except OSError as e:
+                raise ConfigurationError(f"Config file read error: {e}") from e
+        else:
+            self.data = {}
+        if not loaded_from_file or not self.data:
             self._override_from_env()
-            self._validate_config()
-        except yaml.YAMLError as e:
-            logger.error(f"YAML config parse error: {e}")
-            raise ConfigurationError() from e
-        except OSError as e:
-            logger.error(f"Config file read error: {e}")
-            raise ConfigurationError() from e
-        except (ValueError, TypeError, AttributeError) as e:
-            logger.error(f"Config processing error: {e}")
-            raise ConfigurationError() from e
+        self._validate_config()
 
     def _override_from_env(self) -> None:
         for item in _CONFIG_ITEMS:
@@ -346,21 +351,13 @@ class Config:
             try:
                 resolved = path.resolve()
             except OSError:
-                logger.debug(f"Failed to resolve config file path: {file_path}")
                 return file_path
             if not resolved.is_relative_to(project_root):
-                logger.debug(
-                    f"Refusing to read config file outside project root: {file_path}"
-                )
                 return file_path
             with open(path, encoding="utf-8") as f:
                 content = f.read().strip()
-                logger.debug(f"Loaded config value from file: {file_path}")
                 return content
-        except (OSError, UnicodeDecodeError) as e:
-            logger.debug(
-                f"Failed to load config from file {file_path}; using raw value: {e}"
-            )
+        except (OSError, UnicodeDecodeError):
             return file_path
 
     @staticmethod
@@ -375,13 +372,11 @@ class Config:
     def get(self, key: str, default: Any = _MISSING) -> Any:
         try:
             return reduce(lambda d, k: d[k], key.split("."), self.data)
-        except (KeyError, TypeError) as e:
+        except (KeyError, TypeError):
             if default is not _MISSING:
                 return default
-            builtin_default = self._get_builtin_default(key)
-            if builtin_default is not None:
-                return builtin_default
-            logger.error(f"Invalid config format: {e}")
+            if key in _CONFIG_DEFAULTS:
+                return _CONFIG_DEFAULTS[key]
             return None
 
     def get_required(self, key: str, desc: str | None = None) -> Any:
@@ -400,7 +395,6 @@ class Config:
         self._validate_required_configs()
         self._validate_types_and_ranges()
         self._validate_file_paths()
-        logger.debug("Config validation completed")
 
     def _validate_required_configs(self) -> None:
         self.get_required(ConfigKeys.MISSKEY_INSTANCE_URL, "Misskey instance URL")
@@ -508,5 +502,4 @@ class Config:
                 try:
                     Path(path).parent.mkdir(parents=True, exist_ok=True)
                 except OSError as e:
-                    logger.error(f"Failed to create directory for path {path}: {e}")
                     raise ConfigurationError(f"failed to create {desc}: {path}") from e

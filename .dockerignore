@@ -43,7 +43,6 @@ logs/
 # Config (keep examples)
 config.yaml
 !config.yaml.example
-!.env.example
 
 # Temporary files
 *.tmp
