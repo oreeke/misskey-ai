@@ -78,8 +78,8 @@ bot:
       生成一篇有趣、有见解的社交媒体帖子。
 
   response:
-    mention_enabled: true                           # 是否响应提及（@）
-    chat_enabled: true                              # 是否响应聊天
+    mention: true                                   # 是否响应提及（@）
+    chat: true                                      # 是否响应聊天
     chat_memory: 10                                 # 聊天上下文记忆长度（条）
     rate_limit: -1                                  # 回复速率限制：同一用户回复最小间隔；-1 不限制；30s/5m/1h
     rate_limit_reply: "我需要休息一下..."            # 速率限制回复文案
@@ -162,8 +162,8 @@ BOT_AUTO_POST_MAX_PER_DAY=8                                # 每日最大发帖�
 BOT_AUTO_POST_VISIBILITY=public                            # 发帖可见性（public/home/followers）
 BOT_AUTO_POST_LOCAL_ONLY=false                             # 是否禁用联合（仅本地可见）
 BOT_AUTO_POST_PROMPT=生成一篇有趣、有见解的社交媒体帖子。      # 发帖提示词
-BOT_RESPONSE_MENTION_ENABLED=true                          # 是否响应提及（@）
-BOT_RESPONSE_CHAT_ENABLED=true                             # 是否响应聊天
+BOT_RESPONSE_MENTION=true                                  # 是否响应提及（@）
+BOT_RESPONSE_CHAT=true                                     # 是否响应聊天
 BOT_RESPONSE_CHAT_MEMORY=10                                # 聊天上下文记忆长度（条）
 BOT_RESPONSE_RATE_LIMIT=-1                                 # 回复速率限制：同一用户回复最小间隔；-1 不限制；30s/5m/1h
 BOT_RESPONSE_RATE_LIMIT_REPLY=我需要休息一下...             # 速率限制回复文案

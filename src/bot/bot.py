@@ -486,15 +486,19 @@ class MisskeyBot:
         ]
         for func, hour in cron_jobs:
             self.scheduler.add_job(func, "cron", hour=hour, minute=0, second=0)
-        if self.config.get(ConfigKeys.BOT_AUTO_POST_ENABLED):
-            interval_minutes = self.config.get(ConfigKeys.BOT_AUTO_POST_INTERVAL)
-            logger.info(f"Auto-post enabled; interval: {interval_minutes} minutes")
-            self.scheduler.add_job(
-                self.handlers.on_auto_post,
-                "interval",
-                minutes=interval_minutes,
-                next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
-            )
+        interval_minutes = self.config.get(ConfigKeys.BOT_AUTO_POST_INTERVAL)
+        enabled = bool(self.config.get(ConfigKeys.BOT_AUTO_POST_ENABLED))
+        logger.info(
+            f"Auto-post scheduler ready; enabled={enabled}; interval: {interval_minutes} minutes"
+        )
+        self.scheduler.add_job(
+            self.handlers.on_auto_post,
+            "interval",
+            minutes=interval_minutes,
+            next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
+            id="auto_post",
+            replace_existing=True,
+        )
         self.scheduler.start()
 
     async def _setup_streaming(self) -> None:

@@ -33,6 +33,8 @@ class AutoPostService:
         logger.debug("Post counter reset")
 
     async def run(self) -> None:
+        if not self.bot.config.get(ConfigKeys.BOT_AUTO_POST_ENABLED):
+            return
         max_posts = self.bot.config.get(ConfigKeys.BOT_AUTO_POST_MAX_PER_DAY)
         local_only = self.bot.config.get(ConfigKeys.BOT_AUTO_POST_LOCAL_ONLY)
         if not self.bot.runtime.running or not self.check_post_counter(max_posts):

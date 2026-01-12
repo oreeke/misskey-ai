@@ -16,6 +16,9 @@
 | `^model` | 查看当前模型 |
 | `^model <模型名>` | 切换模型 |
 | `^model reset` | 恢复默认模型 |
+| `^autopost <on\|off>` | 自动发帖开关 |
+| `^mention <on\|off>` | 响应提及开关 |
+| `^chat <on\|off>` | 响应聊天开关 |
 | `^plugins` | 插件列表 |
 | `^enable <插件名>` | 启用插件 |
 | `^disable <插件名>` | 禁用插件 |

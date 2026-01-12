@@ -130,19 +130,19 @@ _CONFIG_ITEMS = (
         env="BOT_AUTO_POST_PROMPT",
     ),
     _ConfigItem(
-        ConfigKeys.BOT_RESPONSE_MENTION_ENABLED,
+        ConfigKeys.BOT_RESPONSE_MENTION,
         (bool,),
         "mention response enabled",
         True,
-        env="BOT_RESPONSE_MENTION_ENABLED",
+        env="BOT_RESPONSE_MENTION",
         env_type=bool,
     ),
     _ConfigItem(
-        ConfigKeys.BOT_RESPONSE_CHAT_ENABLED,
+        ConfigKeys.BOT_RESPONSE_CHAT,
         (bool,),
         "chat response enabled",
         True,
-        env="BOT_RESPONSE_CHAT_ENABLED",
+        env="BOT_RESPONSE_CHAT",
         env_type=bool,
     ),
     _ConfigItem(

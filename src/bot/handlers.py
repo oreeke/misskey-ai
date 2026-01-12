@@ -157,7 +157,7 @@ class MentionHandler:
         return f"Quote:\n{quoted_text}".strip()
 
     async def handle(self, note: dict[str, Any]) -> None:
-        if not self.bot.config.get(ConfigKeys.BOT_RESPONSE_MENTION_ENABLED):
+        if not self.bot.config.get(ConfigKeys.BOT_RESPONSE_MENTION):
             return
         mention = self._parse(note)
         if not mention.mention_id or self._is_self_mention(mention):
@@ -291,7 +291,7 @@ class ChatHandler:
         )
 
     async def handle(self, message: dict[str, Any]) -> None:
-        if not self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_ENABLED):
+        if not self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT):
             return
         if not message.get("id"):
             logger.debug("Missing id; skipping")

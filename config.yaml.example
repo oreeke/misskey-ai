@@ -36,8 +36,8 @@ bot:
       生成一篇有趣、有见解的社交媒体帖子。
 
   response:
-    mention_enabled: true                           # 是否响应提及（@）
-    chat_enabled: true                              # 是否响应聊天
+    mention: true                                   # 是否响应提及（@）
+    chat: true                                      # 是否响应聊天
     chat_memory: 10                                 # 聊天上下文记忆长度（条）
     rate_limit: -1                                  # 回复速率限制：同一用户回复最小间隔；-1 不限制；30s/5m/1h
     rate_limit_reply: "我需要休息一下..."            # 速率限制回复文案
