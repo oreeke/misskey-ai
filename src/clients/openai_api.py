@@ -248,7 +248,8 @@ class OpenAIAPI:
                 "temperature": temperature,
             }
             if max_tokens is not None:
-                if "openai.com" in self.api_base:
+                api_base_host = urlparse(self.api_base).hostname
+                if api_base_host and api_base_host.endswith("openai.com"):
                     kwargs["max_completion_tokens"] = max_tokens
                 else:
                     kwargs["max_tokens"] = max_tokens
