@@ -16,14 +16,14 @@ from openai import (
     Timeout,
 )
 
-from ..shared.constants import (
+from ...shared.constants import (
     API_MAX_RETRIES,
     API_TIMEOUT,
     OPENAI_MAX_CONCURRENCY,
     REQUEST_TIMEOUT,
 )
-from ..shared.exceptions import APIConnectionError, AuthenticationError
-from ..shared.utils import retry_async
+from ...shared.exceptions import APIConnectionError, AuthenticationError
+from ...shared.utils import retry_async
 
 __all__ = ("OpenAIAPI",)
 

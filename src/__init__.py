@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-_MISSKEY_API_MODULE = ".clients.misskey_api"
-_MISSKEY_DRIVE_MODULE = ".clients.misskey_drive"
-_CHANNELS_MODULE = ".clients.channels"
+_MISSKEY_API_MODULE = ".clients.misskey.misskey_api"
+_MISSKEY_DRIVE_MODULE = ".clients.misskey.drive"
+_CHANNELS_MODULE = ".clients.misskey.channels"
 _PLUGIN_MODULE = ".plugin"
 
 __all__ = [
@@ -37,16 +37,16 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "MisskeyAPI": (_MISSKEY_API_MODULE, "MisskeyAPI"),
     "MisskeyDrive": (_MISSKEY_DRIVE_MODULE, "MisskeyDrive"),
     "DriveIO": (_MISSKEY_DRIVE_MODULE, "DriveIO"),
-    "OpenAIAPI": (".clients.openai_api", "OpenAIAPI"),
-    "StreamingClient": (".clients.streaming", "StreamingClient"),
+    "OpenAIAPI": (".clients.openai.openai_api", "OpenAIAPI"),
+    "StreamingClient": (".clients.misskey.streaming", "StreamingClient"),
     "ChannelType": (_CHANNELS_MODULE, "ChannelType"),
     "PersistenceManager": (".storage.persistence", "PersistenceManager"),
     "ConnectionPool": (".storage.persistence", "ConnectionPool"),
     "PluginBase": (_PLUGIN_MODULE, "PluginBase"),
     "PluginContext": (_PLUGIN_MODULE, "PluginContext"),
     "PluginManager": (_PLUGIN_MODULE, "PluginManager"),
-    "TCPClient": (".clients.transport", "TCPClient"),
-    "ClientSession": (".clients.transport", "ClientSession"),
+    "TCPClient": (".clients.misskey.transport", "TCPClient"),
+    "ClientSession": (".clients.misskey.transport", "ClientSession"),
 }
 
 if TYPE_CHECKING:
@@ -54,12 +54,12 @@ if TYPE_CHECKING:
     from .bot.bot import MisskeyBot
     from .plugin import PluginBase, PluginContext, PluginManager
     from .bot.runtime import BotRuntime
-    from .clients.misskey_api import MisskeyAPI
-    from .clients.misskey_drive import DriveIO, MisskeyDrive
-    from .clients.openai_api import OpenAIAPI
-    from .clients.channels import ChannelType
-    from .clients.streaming import StreamingClient
-    from .clients.transport import ClientSession, TCPClient
+    from .clients.misskey.misskey_api import MisskeyAPI
+    from .clients.misskey.drive import DriveIO, MisskeyDrive
+    from .clients.openai.openai_api import OpenAIAPI
+    from .clients.misskey.channels import ChannelType
+    from .clients.misskey.streaming import StreamingClient
+    from .clients.misskey.transport import ClientSession, TCPClient
     from .shared.config import Config
     from .shared.constants import ConfigKeys
     from .storage.persistence import ConnectionPool, PersistenceManager

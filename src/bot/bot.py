@@ -10,10 +10,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from cachetools import TTLCache
 from loguru import logger
 
-from ..clients.misskey_api import MisskeyAPI
-from ..clients.openai_api import OpenAIAPI
-from ..clients.channels import ChannelSpec, ChannelType
-from ..clients.streaming import StreamingClient
+from ..clients.misskey.misskey_api import MisskeyAPI
+from ..clients.openai import OpenAIAPI
+from ..clients.misskey.channels import ChannelSpec, ChannelType
+from ..clients.misskey.streaming import StreamingClient
 from ..shared.config import Config
 from ..shared.constants import (
     CHAT_CACHE_MAX_USERS,
@@ -505,7 +505,6 @@ class MisskeyBot:
         try:
             self.streaming.on_mention(self.handlers.on_mention)
             self.streaming.on_message(self.handlers.on_message)
-            self.streaming.on_reaction(self.handlers.on_reaction)
             self.streaming.on_notification(self.handlers.on_notification)
             self.streaming.on_note(self.handlers.on_timeline_note)
             channels = await self.get_streaming_channels()

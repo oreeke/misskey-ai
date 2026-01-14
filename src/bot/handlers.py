@@ -585,31 +585,6 @@ class ChatHandler:
         return history
 
 
-class ReactionHandler:
-    def __init__(self, bot: MisskeyBot):
-        self.bot = bot
-
-    async def handle(self, reaction: dict[str, Any]) -> None:
-        username = extract_username(reaction)
-        note_id = reaction.get("noteId")
-        if not isinstance(note_id, str) or not note_id:
-            note_id = reaction.get("note", {}).get("id")
-        note_id = note_id if isinstance(note_id, str) and note_id else "unknown"
-        reaction_type = reaction.get("reaction", "unknown")
-        logger.info(f"User @{username} reacted to note {note_id}: {reaction_type}")
-        if self.bot.config.get(ConfigKeys.LOG_DUMP_EVENTS):
-            logger.opt(lazy=True).debug(
-                "Reaction data: {}",
-                lambda: json.dumps(reaction, ensure_ascii=False, indent=2),
-            )
-        try:
-            await self.bot.plugin_manager.on_reaction(reaction)
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
-            logger.error(f"Error handling reaction event: {e}")
-
-
 class NotificationHandler:
     def __init__(self, bot: MisskeyBot):
         self.bot = bot
@@ -633,7 +608,6 @@ class BotHandlers:
         self.bot = bot
         self.mention = MentionHandler(bot)
         self.chat = ChatHandler(bot)
-        self.reaction = ReactionHandler(bot)
         self.notification = NotificationHandler(bot)
         self.auto_post = AutoPostService(bot)
 
@@ -642,9 +616,6 @@ class BotHandlers:
 
     async def on_message(self, message: dict[str, Any]) -> None:
         await self.chat.handle(message)
-
-    async def on_reaction(self, reaction: dict[str, Any]) -> None:
-        await self.reaction.handle(reaction)
 
     async def on_notification(self, notification: dict[str, Any]) -> None:
         await self.notification.handle(notification)

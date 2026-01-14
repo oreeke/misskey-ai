@@ -3,7 +3,7 @@ from typing import Any
 
 import aiosqlite
 
-from src.clients.streaming import ChannelType
+from src.clients.misskey.channels import ChannelType
 from src.shared.constants import ConfigKeys
 from src.shared.utils import (
     get_memory_usage,

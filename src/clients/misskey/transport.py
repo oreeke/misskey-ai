@@ -4,8 +4,8 @@ from typing import Any
 import aiohttp
 from loguru import logger
 
-from ..shared.constants import API_TIMEOUT, WS_TIMEOUT
-from ..shared.exceptions import ClientConnectorError
+from ...shared.constants import API_TIMEOUT, WS_TIMEOUT
+from ...shared.exceptions import ClientConnectorError
 
 __all__ = ("TCPClient", "ClientSession")
 

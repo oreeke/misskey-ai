@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 import aiohttp
 import anyio
 
-from ..shared.constants import HTTP_OK
-from ..shared.exceptions import APIConnectionError
+from ...shared.constants import HTTP_OK
+from ...shared.exceptions import APIConnectionError
 
 if TYPE_CHECKING:
     from .misskey_api import MisskeyAPI

@@ -7,7 +7,7 @@ from typing import Any
 import aiohttp
 from loguru import logger
 
-from ..shared.constants import (
+from ...shared.constants import (
     API_MAX_RETRIES,
     HTTP_BAD_REQUEST,
     HTTP_FORBIDDEN,
@@ -17,14 +17,14 @@ from ..shared.constants import (
     HTTP_UNAUTHORIZED,
     MISSKEY_MAX_CONCURRENCY,
 )
-from ..shared.exceptions import (
+from ...shared.exceptions import (
     APIBadRequestError,
     APIConnectionError,
     APIRateLimitError,
     AuthenticationError,
 )
-from ..shared.utils import retry_async
-from .misskey_drive import MisskeyDrive
+from ...shared.utils import retry_async
+from .drive import MisskeyDrive
 from .transport import ClientSession, TCPClient
 
 __all__ = ("MisskeyAPI",)
