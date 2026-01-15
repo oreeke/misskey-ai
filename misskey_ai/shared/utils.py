@@ -5,7 +5,12 @@ from typing import Any
 
 import psutil
 from loguru import logger
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_random_exponential,
+)
 
 __all__ = (
     "retry_async",
@@ -33,7 +38,7 @@ def redact_misskey_access_token(text: str) -> str:
 def retry_async(max_retries=3, retryable_exceptions=None):
     kwargs = {
         "stop": stop_after_attempt(max_retries),
-        "wait": wait_fixed(3),
+        "wait": wait_random_exponential(multiplier=1, max=30),
         "before_sleep": lambda retry_state: logger.info(
             f"Retry attempt #{retry_state.attempt_number}..."
         ),

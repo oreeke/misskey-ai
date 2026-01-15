@@ -29,6 +29,17 @@ __all__ = ("OpenAIAPI",)
 
 
 class OpenAIAPI:
+    @staticmethod
+    def _safe_error_message(e: Exception, *, limit: int = 300) -> str:
+        name = type(e).__name__
+        msg = str(e).strip()
+        if not msg:
+            return name
+        msg = " ".join(msg.split())
+        if len(msg) > limit:
+            msg = f"{msg[: max(0, limit - 3)]}..."
+        return f"{name}: {msg}"
+
     def __init__(
         self,
         api_key: str,
@@ -48,7 +59,7 @@ class OpenAIAPI:
             self._initialized = False
         except Exception as e:
             logger.error(f"Failed to create OpenAI API client: {e}")
-            raise APIConnectionError() from e
+            raise APIConnectionError(self._safe_error_message(e)) from e
 
     def initialize(self) -> None:
         if not self._initialized:
@@ -81,13 +92,13 @@ class OpenAIAPI:
             return self._process_api_response(response, call_type)
         except BadRequestError as e:
             logger.error(f"API request parameter error: {e}")
-            raise ValueError() from e
+            raise ValueError(self._safe_error_message(e)) from e
         except OpenAIAuthenticationError as e:
             logger.error(f"API authentication failed: {e}")
-            raise AuthenticationError() from e
+            raise AuthenticationError(self._safe_error_message(e)) from e
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Invalid API response format: {e}")
-            raise ValueError() from e
+            raise ValueError(self._safe_error_message(e)) from e
 
     def _should_use_responses(self) -> bool:
         if self.api_mode == "responses":
@@ -126,7 +137,7 @@ class OpenAIAPI:
             return text
         except OpenAIAuthenticationError as e:
             logger.error(f"API authentication failed: {e}")
-            raise AuthenticationError() from e
+            raise AuthenticationError(self._safe_error_message(e)) from e
         except (NotFoundError, BadRequestError) as e:
             if self.api_mode != "auto":
                 raise
@@ -138,7 +149,7 @@ class OpenAIAPI:
             )
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Invalid API response format: {e}")
-            raise ValueError() from e
+            raise ValueError(self._safe_error_message(e)) from e
 
     async def _call_api_structured(
         self,
@@ -169,10 +180,10 @@ class OpenAIAPI:
             return text
         except OpenAIAuthenticationError as e:
             logger.error(f"API authentication failed: {e}")
-            raise AuthenticationError() from e
+            raise AuthenticationError(self._safe_error_message(e)) from e
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Invalid API response format: {e}")
-            raise ValueError() from e
+            raise ValueError(self._safe_error_message(e)) from e
 
     async def _make_responses_request(
         self,
@@ -204,13 +215,13 @@ class OpenAIAPI:
             getattr(response, "output", None)
         )
         if not parts:
-            raise APIConnectionError()
+            raise APIConnectionError("Empty output")
         return "".join(parts)
 
     @staticmethod
     def _collect_responses_output_text(output: Any) -> list[str]:
         if not isinstance(output, list):
-            raise APIConnectionError()
+            raise APIConnectionError("Invalid output type")
         return list(OpenAIAPI._iter_responses_output_text(output))
 
     @staticmethod
