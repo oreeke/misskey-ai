@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
 
-from ..bot.bot import MisskeyBot
+from ..bot.core import MisskeyBot
 from ..shared.config import Config
 from ..shared.constants import ConfigKeys
 from ..shared.exceptions import (

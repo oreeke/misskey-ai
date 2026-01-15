@@ -12,7 +12,7 @@ __all__ = ("PluginBase",)
 
 class PluginBase:
     def __init__(self, config_or_context):
-        self.persistence_manager = None
+        self.db = None
         self.plugin_manager = None
         self.global_config = None
         self.misskey = None

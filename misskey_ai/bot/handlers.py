@@ -12,7 +12,7 @@ from ..shared.utils import extract_user_handle, extract_user_id, extract_usernam
 from .autopost import AutoPostService
 
 if TYPE_CHECKING:
-    from .bot import MisskeyBot
+    from .core import MisskeyBot
 
 
 @dataclass(slots=True)

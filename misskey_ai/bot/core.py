@@ -26,7 +26,7 @@ from ..shared.constants import (
 )
 from ..shared.exceptions import ConfigurationError
 from ..shared.utils import get_memory_usage, normalize_tokens
-from ..storage.persistence import PersistenceManager
+from ..db.sqlite import DBManager
 from ..plugin.manager import PluginManager
 from .handlers import BotHandlers
 from .runtime import BotRuntime
@@ -70,13 +70,11 @@ class MisskeyBot:
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Initialization failed: {e}")
             raise ConfigurationError() from e
-        self.persistence = PersistenceManager(
-            config.get(ConfigKeys.DB_PATH), config=config
-        )
+        self.db = DBManager(config.get(ConfigKeys.DB_PATH), config=config)
         self.runtime = BotRuntime(self)
         self.plugin_manager = PluginManager(
             config,
-            persistence=self.persistence,
+            db=self.db,
             context_objects={
                 "misskey": self.misskey,
                 "drive": self.misskey.drive,
@@ -251,7 +249,7 @@ class MisskeyBot:
         last_reply_ts = None
         turns = 0
         blocked_until_ts = None
-        row = await self.persistence.get_response_limit_state(user_id)
+        row = await self.db.get_response_limit_state(user_id)
         if row:
             last_reply_ts, turns, blocked_until_ts = row
             if blocked_until_ts == -1:
@@ -270,7 +268,7 @@ class MisskeyBot:
         blocked_until_ts = state.blocked_until_ts
         if blocked_until_ts == float("inf"):
             blocked_until_ts = -1
-        await self.persistence.set_response_limit_state(
+        await self.db.set_response_limit_state(
             user_id=user_id,
             last_reply_ts=state.last_reply_ts,
             turns=state.turns,
@@ -467,7 +465,7 @@ class MisskeyBot:
         logger.debug(f"Memory usage: {memory_usage['rss_mb']} MB")
 
     async def _initialize_services(self) -> None:
-        await self.persistence.initialize()
+        await self.db.initialize()
         self.openai.initialize()
         current_user = await self.misskey.get_current_user()
         self.bot_user_id = current_user.get("id")
@@ -481,8 +479,8 @@ class MisskeyBot:
     def _setup_scheduler(self) -> None:
         cron_jobs = [
             (self.handlers.auto_post.reset_daily_counters, 0),
-            (self.persistence.vacuum, 2),
-            (self.persistence.cleanup_response_limit_state, 3),
+            (self.db.vacuum, 2),
+            (self.db.cleanup_response_limit_state, 3),
         ]
         for func, hour in cron_jobs:
             self.scheduler.add_job(func, "cron", hour=hour, minute=0, second=0)
@@ -531,7 +529,7 @@ class MisskeyBot:
             await self.streaming.close()
             await self.misskey.close()
             await self.openai.close()
-            await self.persistence.close()
+            await self.db.close()
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise

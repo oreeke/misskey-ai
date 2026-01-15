@@ -4,9 +4,9 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
-from src.plugin import PluginBase
-from src.shared.constants import ConfigKeys
-from src.shared.utils import normalize_tokens
+from misskey_ai.plugin import PluginBase
+from misskey_ai.shared.constants import ConfigKeys
+from misskey_ai.shared.utils import normalize_tokens
 
 from .handlers import CmdHandlersMixin
 
@@ -156,12 +156,10 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
         return True
 
     async def on_startup(self) -> None:
-        if not getattr(self, "persistence_manager", None):
+        if not getattr(self, "db", None):
             return
         if getattr(self, "openai", None):
-            model = await self.persistence_manager.get_plugin_data(
-                self.name, ConfigKeys.OPENAI_MODEL
-            )
+            model = await self.db.get_plugin_data(self.name, ConfigKeys.OPENAI_MODEL)
             if model:
                 self.openai.model = model
                 self._set_global_config_value(ConfigKeys.OPENAI_MODEL, model)

@@ -9,7 +9,7 @@ from loguru import logger
 from ..shared.config import Config
 from ..shared.constants import ConfigKeys
 
-__all__ = ("PersistenceManager", "ConnectionPool")
+__all__ = ("DBManager", "ConnectionPool")
 
 
 class ConnectionPool:
@@ -57,7 +57,7 @@ class ConnectionPool:
         self._created_connections = 0
 
 
-class PersistenceManager:
+class DBManager:
     def __init__(
         self,
         db_path: str | None = None,
@@ -85,11 +85,11 @@ class PersistenceManager:
             return
         await self._create_tables()
         self._initialized = True
-        logger.info(f"Persistence manager initialized: {self.db_path}")
+        logger.info(f"DB manager initialized: {self.db_path}")
 
     async def close(self) -> None:
         await self._pool.close_all()
-        logger.debug("Persistence manager closed")
+        logger.debug("DB manager closed")
 
     async def _create_tables(self) -> None:
         conn = await self._pool.get_connection()

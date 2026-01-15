@@ -19,7 +19,7 @@ __all__ = [
     "OpenAIAPI",
     "StreamingClient",
     "ChannelType",
-    "PersistenceManager",
+    "DBManager",
     "ConnectionPool",
     "PluginBase",
     "PluginContext",
@@ -29,7 +29,7 @@ __all__ = [
 ]
 
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "MisskeyBot": (".bot.bot", "MisskeyBot"),
+    "MisskeyBot": (".bot.core", "MisskeyBot"),
     "BotRunner": (".app.main", "BotRunner"),
     "BotRuntime": (".bot.runtime", "BotRuntime"),
     "Config": (".shared.config", "Config"),
@@ -40,8 +40,8 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "OpenAIAPI": (".clients.openai.openai_api", "OpenAIAPI"),
     "StreamingClient": (".clients.misskey.streaming", "StreamingClient"),
     "ChannelType": (_CHANNELS_MODULE, "ChannelType"),
-    "PersistenceManager": (".storage.persistence", "PersistenceManager"),
-    "ConnectionPool": (".storage.persistence", "ConnectionPool"),
+    "DBManager": (".db.sqlite", "DBManager"),
+    "ConnectionPool": (".db.sqlite", "ConnectionPool"),
     "PluginBase": (_PLUGIN_MODULE, "PluginBase"),
     "PluginContext": (_PLUGIN_MODULE, "PluginContext"),
     "PluginManager": (_PLUGIN_MODULE, "PluginManager"),
@@ -51,7 +51,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
 
 if TYPE_CHECKING:
     from .app.main import BotRunner
-    from .bot.bot import MisskeyBot
+    from .bot.core import MisskeyBot
     from .plugin import PluginBase, PluginContext, PluginManager
     from .bot.runtime import BotRuntime
     from .clients.misskey.misskey_api import MisskeyAPI
@@ -62,7 +62,7 @@ if TYPE_CHECKING:
     from .clients.misskey.transport import ClientSession, TCPClient
     from .shared.config import Config
     from .shared.constants import ConfigKeys
-    from .storage.persistence import ConnectionPool, PersistenceManager
+    from .db.sqlite import ConnectionPool, DBManager
 
 
 def __getattr__(name: str) -> Any:

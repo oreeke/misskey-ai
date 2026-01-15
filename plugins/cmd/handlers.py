@@ -3,9 +3,9 @@ from typing import Any
 
 import aiosqlite
 
-from src.clients.misskey.channels import ChannelType
-from src.shared.constants import ConfigKeys
-from src.shared.utils import (
+from misskey_ai.clients.misskey.channels import ChannelType
+from misskey_ai.shared.constants import ConfigKeys
+from misskey_ai.shared.utils import (
     get_memory_usage,
     get_system_info,
     health_check,
@@ -147,7 +147,7 @@ class CmdHandlersMixin:
 
     async def _get_db_stats(self) -> str:
         try:
-            stats = await self.persistence_manager.get_table_stats()
+            stats = await self.db.get_table_stats()
             if not stats:
                 return "数据库为空"
             info_lines = ["数据库统计:"]
@@ -168,7 +168,7 @@ class CmdHandlersMixin:
         plugin_name = parts[0]
         key = parts[1] if len(parts) > 1 else None
         try:
-            count = await self.persistence_manager.delete_plugin_data(plugin_name, key)
+            count = await self.db.delete_plugin_data(plugin_name, key)
             if key:
                 return (
                     f"已删除插件 {plugin_name} 的 {key} 数据"
@@ -188,18 +188,14 @@ class CmdHandlersMixin:
         if not getattr(self, "openai", None):
             return "OpenAI 客户端未初始化"
         if not arg:
-            saved = await self.persistence_manager.get_plugin_data(
-                self.name, ConfigKeys.OPENAI_MODEL
-            )
+            saved = await self.db.get_plugin_data(self.name, ConfigKeys.OPENAI_MODEL)
             return (
                 f"当前模型: {self.openai.model}"
                 if not saved
                 else f"当前模型: {self.openai.model}\n已保存覆盖: {saved}"
             )
         if arg.lower() in {"reset", "default"}:
-            await self.persistence_manager.delete_plugin_data(
-                self.name, ConfigKeys.OPENAI_MODEL
-            )
+            await self.db.delete_plugin_data(self.name, ConfigKeys.OPENAI_MODEL)
             await self.global_config.load()
             model = self.global_config.get(ConfigKeys.OPENAI_MODEL)
             self.openai.model = model
@@ -208,9 +204,7 @@ class CmdHandlersMixin:
         model = arg
         self.openai.model = model
         self._set_global_config_value(ConfigKeys.OPENAI_MODEL, model)
-        await self.persistence_manager.set_plugin_data(
-            self.name, ConfigKeys.OPENAI_MODEL, model
-        )
+        await self.db.set_plugin_data(self.name, ConfigKeys.OPENAI_MODEL, model)
         return f"已切换模型: {model}"
 
     @staticmethod
@@ -229,9 +223,9 @@ class CmdHandlersMixin:
         return self._format_code_block(label, items if items else ["(空)"])
 
     async def _apply_saved_response_user_list(self, key: str) -> None:
-        if not getattr(self, "persistence_manager", None):
+        if not getattr(self, "db", None):
             return
-        saved = await self.persistence_manager.get_plugin_data(self.name, key)
+        saved = await self.db.get_plugin_data(self.name, key)
         if not saved:
             return
         try:
@@ -244,17 +238,17 @@ class CmdHandlersMixin:
 
     async def _save_response_user_list(self, key: str, items: list[str]) -> None:
         self._set_global_config_value(key, items)
-        if not getattr(self, "persistence_manager", None):
+        if not getattr(self, "db", None):
             return
-        await self.persistence_manager.set_plugin_data(
+        await self.db.set_plugin_data(
             self.name, key, json.dumps(items, ensure_ascii=False, separators=(",", ":"))
         )
 
     async def _reset_response_user_list(self, key: str, baseline: list[str]) -> None:
         self._set_global_config_value(key, list(baseline))
-        if not getattr(self, "persistence_manager", None):
+        if not getattr(self, "db", None):
             return
-        await self.persistence_manager.delete_plugin_data(self.name, key)
+        await self.db.delete_plugin_data(self.name, key)
 
     async def _handle_response_user_list(
         self, label: str, key: str, args: str, baseline: list[str]

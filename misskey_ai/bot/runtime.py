@@ -6,7 +6,7 @@ from collections.abc import Coroutine
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .bot import MisskeyBot
+    from .core import MisskeyBot
 
 __all__ = ("BotRuntime",)
 

@@ -5,7 +5,7 @@ from typing import Any
 import anyio
 from loguru import logger
 
-from src.plugin import PluginBase
+from misskey_ai.plugin import PluginBase
 
 
 class TopicsPlugin(PluginBase):
@@ -19,8 +19,8 @@ class TopicsPlugin(PluginBase):
 
     async def initialize(self) -> bool:
         try:
-            if not self.persistence_manager:
-                logger.error("Topics plugin missing persistence_manager instance")
+            if not self.db:
+                logger.error("Topics plugin missing db instance")
                 return False
             await self._load_topics()
             await self._initialize_plugin_data()
@@ -51,14 +51,12 @@ class TopicsPlugin(PluginBase):
 
     async def _initialize_plugin_data(self) -> None:
         try:
-            last_used_line = await self.persistence_manager.get_plugin_data(
-                "Topics", "last_used_line"
-            )
+            last_used_line = await self.db.get_plugin_data("Topics", "last_used_line")
             if last_used_line is None:
                 initial_index = max(0, self.start_line - 1)
                 if self.topics:
                     initial_index %= len(self.topics)
-                await self.persistence_manager.set_plugin_data(
+                await self.db.set_plugin_data(
                     "Topics", "last_used_line", str(initial_index)
                 )
         except Exception as e:
@@ -111,9 +109,7 @@ class TopicsPlugin(PluginBase):
 
     async def _get_last_used_line(self) -> int:
         try:
-            result = await self.persistence_manager.get_plugin_data(
-                "Topics", "last_used_line"
-            )
+            result = await self.db.get_plugin_data("Topics", "last_used_line")
             return max(0, int(result)) if result else 0
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
@@ -123,9 +119,7 @@ class TopicsPlugin(PluginBase):
 
     async def _update_last_used_line(self, line_number: int) -> None:
         try:
-            await self.persistence_manager.set_plugin_data(
-                "Topics", "last_used_line", str(line_number)
-            )
+            await self.db.set_plugin_data("Topics", "last_used_line", str(line_number))
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise

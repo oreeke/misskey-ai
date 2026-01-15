@@ -5,7 +5,7 @@ from typing import Any, cast
 import aiohttp
 from loguru import logger
 
-from src.plugin import PluginBase
+from misskey_ai.plugin import PluginBase
 
 
 class WeatherPlugin(PluginBase):

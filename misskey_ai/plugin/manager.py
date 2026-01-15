@@ -21,14 +21,14 @@ class PluginManager:
         self,
         config: Config,
         plugins_dir: str = "plugins",
-        persistence=None,
+        db=None,
         context_objects: dict[str, Any] | None = None,
     ):
         self.config = config
         self.plugins_dir = Path(plugins_dir)
         self.plugins: dict[str, PluginBase] = {}
         self.discovered_plugins: dict[str, dict[str, Any]] = {}
-        self.persistence = persistence
+        self.db = db
         self.context_objects = context_objects or {}
 
     async def __aenter__(self):
@@ -162,7 +162,7 @@ class PluginManager:
 
     def _create_plugin_instance(self, plugin_class, plugin_name, plugin_config):
         context_objects = {
-            "persistence_manager": self.persistence,
+            "db": self.db,
             "plugin_manager": self,
             "global_config": self.config,
         }
