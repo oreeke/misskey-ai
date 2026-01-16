@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import urlencode, urlsplit, urlunsplit
@@ -10,13 +11,11 @@ from cachetools import TTLCache
 from loguru import logger
 
 from ...shared.constants import (
-    RECEIVE_TIMEOUT,
     STREAM_DEDUP_CACHE_MAX,
     STREAM_DEDUP_CACHE_TTL,
     STREAM_QUEUE_MAX,
     STREAM_QUEUE_PUT_TIMEOUT,
     STREAM_WORKERS,
-    WS_MAX_RETRIES,
 )
 from ...shared.exceptions import WebSocketConnectionError, WebSocketReconnectError
 from ...shared.utils import redact_misskey_access_token
@@ -36,6 +35,7 @@ class StreamingClient(_StreamingEventsMixin):
         self.ws_connection: aiohttp.ClientWebSocketResponse | None = None
         self.transport = ClientSession
         self.log_dump_events = log_dump_events
+        self.state = "initializing"
         self.channels: dict[str, dict[str, Any]] = {}
         self.event_handlers: dict[str, list[Callable]] = {}
         self.processed_events = TTLCache(
@@ -54,6 +54,9 @@ class StreamingClient(_StreamingEventsMixin):
         self._chat_user_channel_ids: dict[str, str] = {}
         self._chat_channel_other_ids: dict[str, str] = {}
         self._chat_user_cache: dict[str, dict[str, Any]] = {}
+        self._send_buffer: deque[dict[str, Any]] = deque()
+        self._ws_lock = asyncio.Lock()
+        self._send_lock = asyncio.Lock()
 
     async def __aenter__(self):
         return self
@@ -68,6 +71,7 @@ class StreamingClient(_StreamingEventsMixin):
         await self._close_websocket()
         await self.transport.close_session(silent=True)
         self.processed_events.clear()
+        self._send_buffer.clear()
         logger.debug("Streaming client closed")
 
     def on_mention(self, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
@@ -102,26 +106,24 @@ class StreamingClient(_StreamingEventsMixin):
     ) -> None:
         self.should_reconnect = reconnect
         specs = self._normalize_channel_specs(channels)
-        retry_count = 0
-        while self.should_reconnect:
+        await self.connect_once(specs)
+        retry_delay = 1.0
+        while self.should_reconnect and self.running:
             try:
-                await self.connect_once(specs)
-                retry_count = 0
                 await self._listen_messages()
                 return
-            except WebSocketConnectionError:
-                retry_count += 1
-                if not reconnect or retry_count >= WS_MAX_RETRIES:
-                    logger.error(
-                        f"WebSocket connection failed; max retries reached ({WS_MAX_RETRIES})"
-                    )
+            except WebSocketConnectionError as e:
+                if not reconnect:
                     raise
+                self.state = "reconnecting"
                 logger.debug(
-                    f"WebSocket connection error; reconnecting... {retry_count}/{WS_MAX_RETRIES}"
+                    f"WebSocket disconnected; reconnecting in {retry_delay}s: {e}"
                 )
-                self.running = False
-                self.channels.clear()
-                await asyncio.sleep(3)
+                try:
+                    await self._reconnect_with_backoff(retry_delay)
+                except WebSocketConnectionError:
+                    pass
+                retry_delay = min(retry_delay * 2, 30.0)
 
     async def disconnect(self) -> None:
         self.should_reconnect = False
@@ -130,10 +132,59 @@ class StreamingClient(_StreamingEventsMixin):
         await self._disconnect_all_channels()
         await self._close_websocket()
         self.processed_events.clear()
+        self._send_buffer.clear()
+        self.state = "disconnected"
 
     @property
     def _ws_available(self) -> bool:
         return self.ws_connection and not self.ws_connection.closed
+
+    def _buffer_outgoing(self, message: dict[str, Any]) -> None:
+        if len(self._send_buffer) >= STREAM_QUEUE_MAX:
+            try:
+                self._send_buffer.popleft()
+            except IndexError:
+                pass
+        self._send_buffer.append(message)
+
+    async def _send_or_buffer(self, message: dict[str, Any]) -> None:
+        async with self._send_lock:
+            if not self._ws_available:
+                self._buffer_outgoing(message)
+                return
+            try:
+                await self.ws_connection.send_json(message)
+            except (aiohttp.ClientError, OSError) as e:
+                self._buffer_outgoing(message)
+                await self._close_websocket()
+                error_msg = redact_misskey_access_token(str(e))
+                logger.debug(f"WebSocket send failed; reconnecting: {error_msg}")
+                return
+
+    async def _send_control(self, message: dict[str, Any]) -> None:
+        async with self._send_lock:
+            if not self._ws_available:
+                raise WebSocketReconnectError()
+            try:
+                await self.ws_connection.send_json(message)
+            except (aiohttp.ClientError, OSError) as e:
+                await self._close_websocket()
+                error_msg = redact_misskey_access_token(str(e))
+                logger.debug(f"WebSocket send failed; reconnecting: {error_msg}")
+                raise WebSocketReconnectError()
+
+    async def _flush_send_buffer(self) -> None:
+        while self._send_buffer and self._ws_available:
+            message = self._send_buffer.popleft()
+            await self._send_control(message)
+
+    async def _reconnect_with_backoff(self, delay_seconds: float) -> None:
+        await self._close_websocket()
+        await asyncio.sleep(delay_seconds)
+        await self._connect_websocket()
+        await self._resubscribe_channels()
+        await self._flush_send_buffer()
+        self.state = "connected"
 
     async def connect_channel(
         self, channel: ChannelType | str, params: dict[str, Any] | None = None
@@ -156,21 +207,18 @@ class StreamingClient(_StreamingEventsMixin):
             )
             return existing_channels[0]
         channel_id = str(uuid.uuid4())
-        message = {
-            "type": "connect",
-            "body": {
-                "channel": channel_name,
-                "id": channel_id,
-                "params": effective_params,
-            },
-        }
-        if not self._ws_available:
-            logger.error(
-                f"WebSocket unavailable; cannot connect channel: {channel_name}"
-            )
-            raise WebSocketConnectionError()
-        await self.ws_connection.send_json(message)
         self.channels[channel_id] = {"name": channel_name, "params": effective_params}
+        if self._ws_available:
+            await self._send_control(
+                {
+                    "type": "connect",
+                    "body": {
+                        "channel": channel_name,
+                        "id": channel_id,
+                        "params": effective_params,
+                    },
+                }
+            )
         logger.debug(f"Connected channel: {channel_name} (ID: {channel_id})")
         return channel_id
 
@@ -187,18 +235,25 @@ class StreamingClient(_StreamingEventsMixin):
         ]
         for channel_id in channels_to_remove:
             if self._ws_available:
-                message = {"type": "disconnect", "body": {"id": channel_id}}
-                await self.ws_connection.send_json(message)
-            del self.channels[channel_id]
+                try:
+                    await self._send_control(
+                        {"type": "disconnect", "body": {"id": channel_id}}
+                    )
+                except WebSocketConnectionError:
+                    pass
+            self.channels.pop(channel_id, None)
         logger.debug(f"Disconnected channel: {channel_name}")
 
     async def disconnect_channel_id(self, channel_id: str) -> None:
         if not channel_id:
             return
         if channel_id in self.channels and self._ws_available:
-            await self.ws_connection.send_json(
-                {"type": "disconnect", "body": {"id": channel_id}}
-            )
+            try:
+                await self._send_control(
+                    {"type": "disconnect", "body": {"id": channel_id}}
+                )
+            except WebSocketConnectionError:
+                pass
         self.channels.pop(channel_id, None)
 
     async def send_channel_message(
@@ -222,9 +277,7 @@ class StreamingClient(_StreamingEventsMixin):
     async def _send_channel_message(
         self, channel_id: str, event_type: str, body: dict[str, Any]
     ) -> None:
-        if not self._ws_available:
-            return
-        await self.ws_connection.send_json(
+        await self._send_or_buffer(
             {"type": "ch", "body": {"id": channel_id, "type": event_type, "body": body}}
         )
 
@@ -239,7 +292,6 @@ class StreamingClient(_StreamingEventsMixin):
             return
         self.running = True
         self._ensure_workers_started()
-        await self._connect_websocket()
         requested = self._normalize_channel_specs(channels)
         if not any(self._channel_name(s) == ChannelType.MAIN.value for s in requested):
             requested.insert(0, ChannelType.MAIN.value)
@@ -250,11 +302,21 @@ class StreamingClient(_StreamingEventsMixin):
                 await self.connect_channel(ChannelType(channel), params)
             except ValueError:
                 await self.connect_channel(channel, params)
+        try:
+            await self._connect_websocket()
+            await self._resubscribe_channels()
+            await self._flush_send_buffer()
+            self.state = "connected"
+        except WebSocketConnectionError:
+            self.state = "reconnecting"
         if self._first_connection:
             logger.info("Streaming client started")
             self._first_connection = False
 
     async def _connect_websocket(self) -> None:
+        async with self._ws_lock:
+            if self._ws_available:
+                return
         raw = self.instance_url.strip().rstrip("/")
         if "://" not in raw:
             raw = f"https://{raw}"
@@ -282,9 +344,7 @@ class StreamingClient(_StreamingEventsMixin):
             if not self._ws_available:
                 raise WebSocketReconnectError()
             try:
-                msg = await asyncio.wait_for(
-                    self.ws_connection.receive(), timeout=RECEIVE_TIMEOUT
-                )
+                msg = await asyncio.wait_for(self.ws_connection.receive(), timeout=10)
                 if msg.type in (
                     aiohttp.WSMsgType.CLOSED,
                     aiohttp.WSMsgType.CLOSING,
@@ -307,9 +367,30 @@ class StreamingClient(_StreamingEventsMixin):
                 continue
 
     async def _close_websocket(self) -> None:
-        if self.ws_connection and not self.ws_connection.closed:
-            await self.ws_connection.close()
-        self.ws_connection = None
+        async with self._ws_lock:
+            if self.ws_connection and not self.ws_connection.closed:
+                try:
+                    await self.ws_connection.close()
+                except Exception:
+                    pass
+            self.ws_connection = None
+
+    async def _resubscribe_channels(self) -> None:
+        for channel_id, info in self.channels.items():
+            channel_name = info.get("name")
+            if not isinstance(channel_name, str) or not channel_name:
+                continue
+            params = info.get("params") or {}
+            await self._send_control(
+                {
+                    "type": "connect",
+                    "body": {
+                        "channel": channel_name,
+                        "id": channel_id,
+                        "params": params,
+                    },
+                }
+            )
 
     async def _cleanup_failed_connection(self) -> None:
         try:
@@ -321,8 +402,9 @@ class StreamingClient(_StreamingEventsMixin):
         for channel_id in self.channels:
             if self._ws_available:
                 try:
-                    message = {"type": "disconnect", "body": {"id": channel_id}}
-                    await self.ws_connection.send_json(message)
+                    await self._send_control(
+                        {"type": "disconnect", "body": {"id": channel_id}}
+                    )
                 except Exception as e:
                     logger.warning(f"Error disconnecting channel {channel_id}: {e}")
         self.channels.clear()

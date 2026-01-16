@@ -4,7 +4,7 @@ from typing import Any
 import aiohttp
 from loguru import logger
 
-from ...shared.constants import API_TIMEOUT, WS_TIMEOUT
+from ...shared.constants import API_TIMEOUT
 from ...shared.exceptions import ClientConnectorError
 
 __all__ = ("TCPClient", "ClientSession")
@@ -61,7 +61,7 @@ class TCPClient:
                 url,
                 autoclose=False,
                 max_msg_size=0,
-                timeout=WS_TIMEOUT,
+                timeout=60,
                 headers={"User-Agent": self.user_agent},
                 compress=compress,
             )
