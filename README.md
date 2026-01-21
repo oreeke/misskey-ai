@@ -44,7 +44,7 @@ cd misskey-ai
 
 ```yaml
 misskey:
-  instance_url: "https://misskey.example.com"       # Misskey 实例 URL
+  instance_url: "https://misskey.example.com"       # Misskey 实例 URL（本地：http://localhost:port）
   access_token: "your_access_token_here"            # Misskey 访问令牌
 
 openai:
@@ -147,7 +147,7 @@ systemctl start misskey-ai.service
 <summary><kbd>📃 docker-compose.yaml</kbd></summary>
 
 ```yaml
-MISSKEY_INSTANCE_URL=https://misskey.example.com           # Misskey 实例 URL
+MISSKEY_INSTANCE_URL=https://misskey.example.com           # Misskey 实例 URL（本地：http://localhost:port）
 MISSKEY_ACCESS_TOKEN=your_access_token_here                # Misskey 访问令牌
 OPENAI_API_KEY=your_api_key_here                           # OpenAI API 密钥
 OPENAI_MODEL=deepseek-chat                                 # 使用的模型名称
