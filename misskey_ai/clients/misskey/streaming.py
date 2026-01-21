@@ -28,7 +28,11 @@ __all__ = ("StreamingClient",)
 
 class StreamingClient(_StreamingEventsMixin):
     def __init__(
-        self, instance_url: str, access_token: str, *, log_dump_events: bool = False
+        self,
+        instance_url: str,
+        access_token: str,
+        *,
+        log_dump_events: bool = False,
     ):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
@@ -320,10 +324,11 @@ class StreamingClient(_StreamingEventsMixin):
             raw = f"https://{raw}"
         parsed = urlsplit(raw)
         scheme = (parsed.scheme or "").lower()
-        if scheme != "https":
-            raise ValueError("Insecure instance URL scheme is not allowed")
+        if scheme not in {"https", "http"}:
+            raise ValueError("Unsupported instance URL scheme")
+        ws_scheme = "wss" if scheme == "https" else "ws"
         base_ws_url = urlunsplit(
-            ("wss", parsed.netloc, parsed.path.rstrip("/"), "", "")
+            (ws_scheme, parsed.netloc, parsed.path.rstrip("/"), "", "")
         ).rstrip("/")
         qs = urlencode({"i": self.access_token})
         ws_url = f"{base_ws_url}/streaming?{qs}"
