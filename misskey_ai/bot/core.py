@@ -15,10 +15,10 @@ from ..clients.openai import OpenAIAPI
 from ..clients.misskey.channels import ChannelSpec, ChannelType
 from ..clients.misskey.streaming import StreamingClient
 from ..shared.config import Config
+from ..shared.config_keys import ConfigKeys
 from ..shared.constants import (
     CHAT_CACHE_MAX_USERS,
     CHAT_CACHE_TTL,
-    ConfigKeys,
     RESPONSE_LIMIT_CACHE_MAX,
     RESPONSE_LIMIT_CACHE_TTL,
     USER_LOCK_CACHE_MAX,

@@ -12,36 +12,36 @@ __all__ = (
 
 
 class MisskeyBotError(Exception):
-    """Base error"""
+    pass
 
 
 class ConfigurationError(MisskeyBotError):
-    """Configuration error"""
+    pass
 
 
 class AuthenticationError(MisskeyBotError):
-    """Authentication error"""
+    pass
 
 
 class APIConnectionError(MisskeyBotError):
-    """API connection error"""
+    pass
 
 
 class APIRateLimitError(MisskeyBotError):
-    """API rate limit error"""
+    pass
 
 
 class APIBadRequestError(MisskeyBotError):
-    """API bad request error"""
+    pass
 
 
 class WebSocketConnectionError(MisskeyBotError):
-    """WebSocket connection error"""
+    pass
 
 
 class WebSocketReconnectError(WebSocketConnectionError):
-    """WebSocket reconnect error"""
+    pass
 
 
 class ClientConnectorError(MisskeyBotError):
-    """TCP client connector error"""
+    pass

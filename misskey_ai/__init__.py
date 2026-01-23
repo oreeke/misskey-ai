@@ -25,7 +25,7 @@ __all__ = [
     "PluginContext",
     "PluginManager",
     "TCPClient",
-    "ClientSession",
+    "client_session",
 ]
 
 _EXPORTS: dict[str, tuple[str, str]] = {
@@ -33,7 +33,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "BotRunner": (".app.main", "BotRunner"),
     "BotRuntime": (".bot.runtime", "BotRuntime"),
     "Config": (".shared.config", "Config"),
-    "ConfigKeys": (".shared.constants", "ConfigKeys"),
+    "ConfigKeys": (".shared.config_keys", "ConfigKeys"),
     "MisskeyAPI": (_MISSKEY_API_MODULE, "MisskeyAPI"),
     "MisskeyDrive": (_MISSKEY_DRIVE_MODULE, "MisskeyDrive"),
     "DriveIO": (_MISSKEY_DRIVE_MODULE, "DriveIO"),
@@ -46,7 +46,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "PluginContext": (_PLUGIN_MODULE, "PluginContext"),
     "PluginManager": (_PLUGIN_MODULE, "PluginManager"),
     "TCPClient": (".clients.misskey.transport", "TCPClient"),
-    "ClientSession": (".clients.misskey.transport", "ClientSession"),
+    "client_session": (".clients.misskey.transport", "client_session"),
 }
 
 if TYPE_CHECKING:
@@ -59,9 +59,9 @@ if TYPE_CHECKING:
     from .clients.openai.openai_api import OpenAIAPI
     from .clients.misskey.channels import ChannelType
     from .clients.misskey.streaming import StreamingClient
-    from .clients.misskey.transport import ClientSession, TCPClient
+    from .clients.misskey.transport import TCPClient, client_session
     from .shared.config import Config
-    from .shared.constants import ConfigKeys
+    from .shared.config_keys import ConfigKeys
     from .db.sqlite import ConnectionPool, DBManager
 
 

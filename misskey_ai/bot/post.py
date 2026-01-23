@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from ..shared.constants import ConfigKeys
+from ..shared.config_keys import ConfigKeys
 
 if TYPE_CHECKING:
     from .core import MisskeyBot

@@ -7,7 +7,7 @@ from typing import Any
 import anyio
 import yaml
 
-from .constants import ConfigKeys
+from .config_keys import ConfigKeys
 from .exceptions import ConfigurationError
 
 __all__ = ("Config",)

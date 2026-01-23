@@ -21,7 +21,7 @@ from ...shared.exceptions import WebSocketConnectionError, WebSocketReconnectErr
 from ...shared.utils import redact_misskey_access_token
 from .channels import ChannelSpec, ChannelType
 from .events import _StreamingEventsMixin
-from .transport import ClientSession
+from .transport import client_session
 
 __all__ = ("StreamingClient",)
 
@@ -37,7 +37,7 @@ class StreamingClient(_StreamingEventsMixin):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
         self.ws_connection: aiohttp.ClientWebSocketResponse | None = None
-        self.transport = ClientSession
+        self.transport = client_session
         self.log_dump_events = log_dump_events
         self.state = "initializing"
         self.channels: dict[str, dict[str, Any]] = {}

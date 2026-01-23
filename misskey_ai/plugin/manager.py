@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -54,8 +55,9 @@ class PluginManager:
         configured = (plugin_dir / _PLUGIN_CONFIG_FILENAME).exists()
         enabled = bool(plugin_config.get("enabled", False))
         key = plugin_dir.name
+        name = self._camelize(key)
         self.discovered_plugins[key] = {
-            "name": key.capitalize(),
+            "name": name,
             "enabled": enabled,
             "priority": plugin_config.get("priority", 0),
             "configured": configured,
@@ -116,12 +118,17 @@ class PluginManager:
                 return
             if not (plugin_class := self._find_plugin_class(module, plugin_dir.name)):
                 return
-            plugin_instance = self._create_plugin_instance(
-                plugin_class, plugin_dir.name, plugin_config
-            )
+            plugin_instance = self._create_plugin_instance(plugin_class, plugin_config)
             self.plugins[plugin_dir.name] = plugin_instance
         except Exception as e:
             logger.error(f"Failed to load plugin {plugin_dir.name}: {e}")
+
+    @staticmethod
+    def _camelize(name: str) -> str:
+        parts = [p for p in re.split(r"[^a-zA-Z0-9]+", name) if p]
+        if not parts:
+            return name.capitalize()
+        return "".join(part[:1].upper() + part[1:] for part in parts)
 
     @staticmethod
     def _load_plugin_module(plugin_dir: Path, plugin_file: Path):
@@ -148,9 +155,13 @@ class PluginManager:
         if not candidates:
             logger.warning(f"No valid plugin class found in {plugin_name.capitalize()}")
             return None
-        expected = f"{plugin_name.capitalize()}Plugin"
+        expected = f"{PluginManager._camelize(plugin_name)}Plugin"
+        expected_lower = expected.lower()
         for cls in candidates:
             if cls.__name__ == expected:
+                return cls
+        for cls in candidates:
+            if cls.__name__.lower() == expected_lower:
                 return cls
         if len(candidates) == 1:
             return candidates[0]
@@ -160,7 +171,7 @@ class PluginManager:
         )
         return None
 
-    def _create_plugin_instance(self, plugin_class, plugin_name, plugin_config):
+    def _create_plugin_instance(self, plugin_class, plugin_config):
         context_objects = {
             "db": self.db,
             "plugin_manager": self,
@@ -168,8 +179,11 @@ class PluginManager:
         }
         for k, v in self.context_objects.items():
             context_objects.setdefault(k, v)
+        name = plugin_class.__name__
+        if name.endswith("Plugin"):
+            name = name[: -len("Plugin")]
         context = PluginContext(
-            name=plugin_name.capitalize(),
+            name=name,
             config=plugin_config,
             **context_objects,
         )

@@ -7,7 +7,7 @@ import aiosqlite
 from loguru import logger
 
 from ..shared.config import Config
-from ..shared.constants import ConfigKeys
+from ..shared.config_keys import ConfigKeys
 
 __all__ = ("DBManager", "ConnectionPool")
 

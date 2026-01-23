@@ -7,7 +7,7 @@ from loguru import logger
 from ...shared.constants import API_TIMEOUT
 from ...shared.exceptions import ClientConnectorError
 
-__all__ = ("TCPClient", "ClientSession")
+__all__ = ("TCPClient", "client_session")
 
 
 class TCPClient:
@@ -70,4 +70,4 @@ class TCPClient:
             raise ClientConnectorError()
 
 
-ClientSession: TCPClient = TCPClient()
+client_session: TCPClient = TCPClient()

@@ -8,7 +8,7 @@ from loguru import logger
 
 from ..bot.core import MisskeyBot
 from ..shared.config import Config
-from ..shared.constants import ConfigKeys
+from ..shared.config_keys import ConfigKeys
 from ..shared.exceptions import (
     APIConnectionError,
     AuthenticationError,

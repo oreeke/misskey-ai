@@ -25,7 +25,7 @@ from ...shared.exceptions import (
 )
 from ...shared.utils import retry_async
 from .drive import MisskeyDrive
-from .transport import ClientSession, TCPClient
+from .transport import TCPClient, client_session
 
 __all__ = ("MisskeyAPI",)
 
@@ -34,7 +34,7 @@ class MisskeyAPI:
     def __init__(self, instance_url: str, access_token: str):
         self.instance_url = instance_url.rstrip("/")
         self.access_token = access_token
-        self.transport: TCPClient = ClientSession
+        self.transport: TCPClient = client_session
         self.drive: MisskeyDrive = MisskeyDrive(self)
         self._semaphore = asyncio.Semaphore(MISSKEY_MAX_CONCURRENCY)
         self._antennas_cache: list[dict[str, Any]] = []

@@ -5,7 +5,7 @@ from typing import Any
 from loguru import logger
 
 from misskey_ai.plugin import PluginBase
-from misskey_ai.shared.constants import ConfigKeys
+from misskey_ai.shared.config_keys import ConfigKeys
 
 
 class VisionPlugin(PluginBase):

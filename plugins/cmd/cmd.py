@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from loguru import logger
 
 from misskey_ai.plugin import PluginBase
-from misskey_ai.shared.constants import ConfigKeys
+from misskey_ai.shared.config_keys import ConfigKeys
 from misskey_ai.shared.utils import normalize_tokens
 
 from .handlers import CmdHandlersMixin
