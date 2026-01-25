@@ -204,12 +204,12 @@ docker compose up -d
 
 ### 模型兼容
 
-| 供应商 | OpenAI SDK | 多模态 |
+| 供应商 | OpenAI-SDK | 多模态 |
 | :---: | :---: | --- |
-| [OpenAI](https://platform.openai.com/docs/overview) | ✅ | 📝 👁️ 🎨 |
+| [OpenAI](https://platform.openai.com/docs/overview) | ✅ | 📝 👁️ |
 | [DeepSeek](https://api-docs.deepseek.com/) | ✅ | 📝 |
-| [xAI](https://docs.x.ai/docs/guides/migration) | ✅ | 📝 👁️ 🎨 |
-| [Gemini](https://ai.google.dev/gemini-api/docs/openai) | ✅ | 📝 👁️ 🎨 |
+| [xAI](https://docs.x.ai/docs/guides/migration) | ✅ | 📝 👁️ |
+| [Gemini](https://ai.google.dev/gemini-api/docs/openai) | ✅ | 📝 👁️ |
 | [Claude](https://docs.anthropic.com/en/api/openai-sdk) | ✅ | 📝 👁️ |
 | [Ollama](https://ollama.com/blog/openai-compatibility) | ✅ | 📝 👁️ |
 
