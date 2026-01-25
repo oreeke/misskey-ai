@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 
 class AutoPostService:
+    _PLUGIN_POST_INTERVAL_SECONDS = 10
+
     def __init__(self, bot: MisskeyBot):
         self.bot = bot
         self.posts_today = 0
@@ -96,7 +98,7 @@ class AutoPostService:
         local_only: bool | None,
     ) -> bool:
         posted_any = False
-        for content in contents:
+        for i, content in enumerate(contents):
             if not self.bot.runtime.running or not self.check_post_counter(max_posts):
                 return posted_any
             await self.bot.misskey.create_note(
@@ -106,6 +108,8 @@ class AutoPostService:
             posted_any = True
             logger.info(f"Auto-post succeeded: {self.bot.format_log_text(content)}")
             logger.info(f"Daily post count: {self.posts_today}/{max_posts}")
+            if i < len(contents) - 1:
+                await asyncio.sleep(self._PLUGIN_POST_INTERVAL_SECONDS)
         return posted_any
 
     async def _generate_ai_post(
