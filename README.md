@@ -221,6 +221,6 @@ docker compose up -d
 | [Cmd](./plugins/cmd) | 在聊天中使用 `^` 开头的命令管理机器人 |
 | [KeyAct](./plugins/keyact) | 匹配自定义关键词直接回复，绕过 AI |
 | [Radar](./plugins/radar) | 与天线推送的帖子互动（反应、回复、转发、引用） |
-| [Topics](./plugins/topics) | 为自动发帖提供内容源 |
+| [Topics](./plugins/topics) | 为自动发帖提供内容源（TXT / RSS） |
 | [Vision](./plugins/vision) | 识别提及（`@`）或聊天中的图片并回复 |
 | [Weather](./plugins/weather) | 查询指定城市的天气信息 |
