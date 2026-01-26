@@ -26,6 +26,11 @@ class TopicsPlugin(PluginBase):
         self.txt_start_line = self.config.get("txt_start_line", 1)
         self.rss_list = self.config.get("rss_list") or []
         self.rss_ai = bool(self.config.get("rss_ai", False))
+        self.rss_post_mode = (
+            str(self.config.get("rss_post_mode") or "batch").strip().lower()
+        )
+        if self.rss_post_mode not in {"batch", "rotate"}:
+            self.rss_post_mode = "batch"
         self.rss_ai_prefix = (
             self.config.get("rss_ai_prefix")
             or "发表一段感想和相关知识（不超过150字），"
@@ -114,6 +119,9 @@ class TopicsPlugin(PluginBase):
             recent = await self.db.get_plugin_data("Topics", "rss_recent_keys")
             if recent is None:
                 await self.db.set_plugin_data("Topics", "rss_recent_keys", "[]")
+            last_feed_idx = await self.db.get_plugin_data("Topics", "rss_last_feed_idx")
+            if last_feed_idx is None:
+                await self.db.set_plugin_data("Topics", "rss_last_feed_idx", "0")
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
@@ -152,6 +160,9 @@ class TopicsPlugin(PluginBase):
             logger.warning("RSS source enabled but rss_list is empty")
             return []
 
+        if self.rss_post_mode == "rotate":
+            return await self._get_next_rss_posts_rotate(urls)
+
         recent_keys = await self._get_recent_rss_keys()
         recent_set = set(recent_keys)
         candidates = await self._fetch_all_rss_candidates(urls)
@@ -164,6 +175,42 @@ class TopicsPlugin(PluginBase):
         )
         await self._set_recent_rss_keys(updated_recent)
         return contents
+
+    async def _get_next_rss_posts_rotate(self, urls: list[str]) -> list[str]:
+        recent_keys = await self._get_recent_rss_keys()
+        recent_set = set(recent_keys)
+        start_idx = await self._get_last_rss_feed_idx()
+        if start_idx >= len(urls):
+            start_idx = 0
+
+        timeout = aiohttp.ClientTimeout(total=60)
+        headers = {"User-Agent": "misskey-ai TopicsPlugin/rss"}
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            for step in range(len(urls)):
+                feed_idx = (start_idx + step) % len(urls)
+                url = urls[feed_idx]
+                try:
+                    candidates = await self._fetch_rss_candidates(
+                        session, url, feed_idx=feed_idx
+                    )
+                except Exception as e:
+                    logger.warning(f"RSS fetch failed: {e}")
+                    candidates = []
+
+                filtered = [c for c in candidates if c.get("key") not in recent_set]
+                best = self._pick_latest_entry(filtered)
+                if not best:
+                    continue
+
+                contents, updated_recent = await self._render_selected_rss_entries(
+                    [best], recent_keys
+                )
+                await self._set_recent_rss_keys(updated_recent)
+                await self._set_last_rss_feed_idx((feed_idx + 1) % len(urls))
+                return contents
+
+        await self._set_last_rss_feed_idx((start_idx + 1) % len(urls))
+        return []
 
     def _get_rss_urls(self) -> list[str]:
         return [
@@ -392,6 +439,26 @@ class TopicsPlugin(PluginBase):
             if isinstance(e, asyncio.CancelledError):
                 raise
             logger.warning(f"Failed to save rss_recent_keys: {e}")
+
+    async def _get_last_rss_feed_idx(self) -> int:
+        try:
+            raw = await self.db.get_plugin_data("Topics", "rss_last_feed_idx")
+            return max(0, int(raw)) if raw else 0
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            logger.warning(f"Failed to load rss_last_feed_idx: {e}")
+            return 0
+
+    async def _set_last_rss_feed_idx(self, idx: int) -> None:
+        try:
+            await self.db.set_plugin_data(
+                "Topics", "rss_last_feed_idx", str(max(0, idx))
+            )
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            logger.warning(f"Failed to save rss_last_feed_idx: {e}")
 
     @staticmethod
     def _append_recent_key(keys: list[str], key: str, *, limit: int) -> list[str]:

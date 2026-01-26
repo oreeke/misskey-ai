@@ -14,6 +14,5 @@
   - 如果关键词为纯链接 `http://...` / `https://...`，将直接发链接不经过 AI
 - `rss`
   - `rss_list` 中添加 RSS 链接，机器人筛选最新动态作为帖子发布
-  - 添加多个 RSS 会相应增加发帖数量，每个 RSS 源对应一篇帖子
   - RSS 拉取和发帖间隔由主配置 `auto_post.interval_minutes` 控制
-  - `rss_ai` 让 AI 生成总结或感想，前提是 RSS 包含内容或接入的模型能预览 URL
+  - `rss_ai` 让 AI 生成总结或感想，前提是 RSS 包含摘要或接入的模型能预览 URL
