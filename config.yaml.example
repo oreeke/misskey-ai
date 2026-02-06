@@ -52,7 +52,7 @@ bot:
       - "user-id-123"
 
 db:
-  path: "data/misskey_ai.db"                        # SQLite 路径
+  path: "data/twipsybot.db"                         # SQLite 路径
   clear: 30                                         # SQLite 数据保留天数（不含插件）；-1 不清理
 
 log:

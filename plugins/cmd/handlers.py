@@ -4,9 +4,9 @@ from typing import Any
 
 import aiosqlite
 
-from misskey_ai.clients.misskey.channels import ChannelType
-from misskey_ai.shared.config_keys import ConfigKeys
-from misskey_ai.shared.utils import (
+from twipsybot.clients.misskey.channels import ChannelType
+from twipsybot.shared.config_keys import ConfigKeys
+from twipsybot.shared.utils import (
     get_memory_usage,
     get_system_info,
     normalize_tokens,

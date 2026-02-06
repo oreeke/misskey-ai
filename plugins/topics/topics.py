@@ -13,7 +13,7 @@ import anyio
 import feedparser
 from loguru import logger
 
-from misskey_ai.plugin import PluginBase
+from twipsybot.plugin import PluginBase
 
 
 class TopicsPlugin(PluginBase):
@@ -184,7 +184,7 @@ class TopicsPlugin(PluginBase):
             start_idx = 0
 
         timeout = aiohttp.ClientTimeout(total=60)
-        headers = {"User-Agent": "misskey-ai TopicsPlugin/rss"}
+        headers = {"User-Agent": "twipsy-rss"}
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             for step in range(len(urls)):
                 feed_idx = (start_idx + step) % len(urls)
@@ -219,7 +219,7 @@ class TopicsPlugin(PluginBase):
 
     async def _fetch_all_rss_candidates(self, urls: list[str]) -> list[dict[str, Any]]:
         timeout = aiohttp.ClientTimeout(total=60)
-        headers = {"User-Agent": "misskey-ai TopicsPlugin/rss"}
+        headers = {"User-Agent": "twipsybot TopicsPlugin/rss"}
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             tasks = [
                 self._fetch_rss_candidates(session, url, feed_idx=i)

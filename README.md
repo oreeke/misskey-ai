@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>Misskey AI</h1>
+<h1>TwipsyBot</h1>
 
 一只 Python 实现的 Misskey 机器人<br><br>
 正运行在：[oreeke.com/@ai](https://oreeke.com/@ai)
@@ -31,8 +31,8 @@
 ### 克隆仓库
 
 ```bash
-git clone https://github.com/oreeke/misskey-ai
-cd misskey-ai
+git clone https://github.com/oreeke/twipsybot.git
+cd twipsybot
 ```
 
 ### 部署方式
@@ -95,7 +95,7 @@ bot:
       - "user-id-123"
 
 db:
-  path: "data/misskey_ai.db"                        # SQLite 路径
+  path: "data/twipsybot.db"                         # SQLite 路径
   clear: 30                                         # SQLite 数据保留天数（不含插件）；-1 不清理
 
 log:
@@ -105,19 +105,17 @@ log:
 </details>
 
 ```bash
-pip install -r requirements.txt
-python run.py
-```
-
-> 后台运行（可选）
-```bash
-nohup python run.py & tail -f logs/misskey_ai.log
+pip install -e .
+twipsybot up        # 启动
+twipsybot status    # 状态
+twipsybot down      # 关闭
+twipsybot help      # 帮助
 ```
 
 > 作为服务（可选）
 
 <details>
-<summary><kbd>📃 misskey-ai.service</kbd></summary>
+<summary><kbd>📃 twipsybot.service</kbd></summary>
 
 ```ini
 [Unit]
@@ -126,8 +124,9 @@ After=network.target
 
 [Service]
 Type=exec
-WorkingDirectory=/path/to/misskey-ai
-ExecStart=/path/to/envs/misskey-ai/bin/python run.py
+WorkingDirectory=/path/to/twipsybot
+Environment=TWIPSYBOT_UP_MODE=foreground
+ExecStart=/path/to/envs/twipsybot/bin/twipsybot up
 KillMode=control-group
 TimeoutStopSec=5
 
@@ -138,7 +137,7 @@ WantedBy=multi-user.target
 
 ```bash
 systemctl daemon-reload
-systemctl start misskey-ai.service
+systemctl start twipsybot.service
 ```
 
 #### `b` Docker Compose
@@ -179,7 +178,7 @@ BOT_TIMELINE_LOCAL=false                                   # localTimeline
 BOT_TIMELINE_HYBRID=false                                  # hybridTimeline
 BOT_TIMELINE_GLOBAL=false                                  # globalTimeline
 BOT_TIMELINE_ANTENNA_IDS=                                  # antenna ID 或名称（逗号/空格分隔）
-DB_PATH=data/misskey_ai.db                                 # SQLite 路径
+DB_PATH=data/twipsybot.db                                  # SQLite 路径
 DB_CLEAR=30                                                # SQLite 数据保留天数（不含插件）；-1 不清理
 LOG_LEVEL=INFO                                             # 日志级别 (DEBUG/INFO/WARNING/ERROR)
 LOG_DUMP_EVENTS=false                                      # 是否输出事件原始数据（DEBUG）

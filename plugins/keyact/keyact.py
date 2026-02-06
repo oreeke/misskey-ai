@@ -5,7 +5,7 @@ from typing import Any
 
 from loguru import logger
 
-from misskey_ai.plugin import PluginBase
+from twipsybot.plugin import PluginBase
 
 
 _MENTION_TOKEN_RE = re.compile(r"@[\w.@-]+\s*")

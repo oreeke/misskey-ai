@@ -7,19 +7,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=utf-8 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    TWIPSYBOT_UP_MODE=foreground
 
-COPY requirements.txt ./
-RUN python -m pip install -r requirements.txt
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY misskey_ai /app/misskey_ai
+COPY pyproject.toml README.md LICENSE ./
+RUN uv pip install --system -r pyproject.toml
+
+COPY twipsybot /app/twipsybot
 COPY plugins /app/plugins
-COPY run.py /app/run.py
-
-RUN useradd -r -u 10001 -m -U -s /usr/sbin/nologin appuser && \
+RUN uv pip install --system --no-deps . && \
+    useradd -r -u 10001 -m -U -s /usr/sbin/nologin appuser && \
     mkdir -p /app/logs /app/data && \
     chown -R appuser:appuser /app/logs /app/data
 
 USER appuser
 
-CMD ["python", "run.py"]
+ENTRYPOINT ["twipsybot"]
+CMD ["up"]

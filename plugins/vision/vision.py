@@ -4,8 +4,8 @@ from typing import Any
 
 from loguru import logger
 
-from misskey_ai.plugin import PluginBase
-from misskey_ai.shared.config_keys import ConfigKeys
+from twipsybot.plugin import PluginBase
+from twipsybot.shared.config_keys import ConfigKeys
 
 
 class VisionPlugin(PluginBase):

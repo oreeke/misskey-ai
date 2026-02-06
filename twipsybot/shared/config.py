@@ -253,7 +253,7 @@ _CONFIG_ITEMS = (
         env="BOT_TIMELINE_ANTENNA_IDS",
     ),
     _ConfigItem(
-        ConfigKeys.DB_PATH, (str,), "database path", "data/misskey_ai.db", env="DB_PATH"
+        ConfigKeys.DB_PATH, (str,), "database path", "data/twipsybot.db", env="DB_PATH"
     ),
     _ConfigItem(
         ConfigKeys.DB_CLEAR,
@@ -264,7 +264,7 @@ _CONFIG_ITEMS = (
         env_type=int,
     ),
     _ConfigItem(
-        ConfigKeys.LOG_PATH, (str,), "log path", "logs/misskey_ai.log", env="LOG_PATH"
+        ConfigKeys.LOG_PATH, (str,), "log path", "logs/twipsybot.log", env="LOG_PATH"
     ),
     _ConfigItem(ConfigKeys.LOG_LEVEL, (str,), "log level", "INFO", env="LOG_LEVEL"),
     _ConfigItem(

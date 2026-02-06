@@ -1,7 +1,7 @@
 services:
-  misskey-ai:
+  twipsybot:
     build: .
-    container_name: misskey-ai
+    container_name: twipsybot
     restart: unless-stopped
 
     volumes:
@@ -42,7 +42,7 @@ services:
       - BOT_TIMELINE_HYBRID=false                                  # hybridTimeline
       - BOT_TIMELINE_GLOBAL=false                                  # globalTimeline
       - BOT_TIMELINE_ANTENNA_IDS=                                  # antenna ID 或名称（逗号/空格分隔）
-      - DB_PATH=data/misskey_ai.db                                 # SQLite 路径
+      - DB_PATH=data/twipsybot.db                                  # SQLite 路径
       - DB_CLEAR=30                                                # SQLite 数据保留天数（不含插件）；-1 不清理
       - LOG_LEVEL=INFO                                             # 日志级别 (DEBUG/INFO/WARNING/ERROR)
       - LOG_DUMP_EVENTS=false                                      # 是否输出事件原始数据（DEBUG）
