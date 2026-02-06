@@ -1,7 +1,5 @@
 import asyncio
-import json
 from typing import Any
-from urllib.parse import urlparse
 
 import openai
 from loguru import logger
@@ -20,10 +18,21 @@ from ...shared.constants import (
     API_MAX_RETRIES,
     API_TIMEOUT,
     OPENAI_MAX_CONCURRENCY,
-    REQUEST_TIMEOUT,
 )
 from ...shared.exceptions import APIConnectionError, AuthenticationError
 from ...shared.utils import retry_async
+from .extract import (
+    build_structured_formats,
+    extract_responses_text,
+    parse_json,
+    process_chat_completions_response,
+    validate_structured_output,
+)
+from .requests import (
+    make_chat_completions_request,
+    make_responses_request,
+    should_use_responses,
+)
 
 __all__ = ("OpenAIAPI",)
 
@@ -51,6 +60,7 @@ class OpenAIAPI:
         self.model = model
         self.api_base = api_base.strip().strip("`")
         self.api_mode = (api_mode or "auto").strip().lower()
+        self._responses_disabled = False
         self._semaphore = asyncio.Semaphore(OPENAI_MAX_CONCURRENCY)
         try:
             self.client = openai.AsyncOpenAI(
@@ -86,10 +96,17 @@ class OpenAIAPI:
         response_format: dict[str, Any] | None = None,
     ) -> str:
         try:
-            response = await self._make_api_request(
-                messages, max_tokens, temperature, response_format=response_format
+            response = await make_chat_completions_request(
+                client=self.client,
+                semaphore=self._semaphore,
+                model=self.model,
+                api_base=self.api_base,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                response_format=response_format,
             )
-            return self._process_api_response(response, call_type)
+            return process_chat_completions_response(response, call_type)
         except BadRequestError as e:
             logger.error(f"API request parameter error: {e}")
             raise ValueError(self._safe_error_message(e)) from e
@@ -101,19 +118,9 @@ class OpenAIAPI:
             raise ValueError(self._safe_error_message(e)) from e
 
     def _should_use_responses(self) -> bool:
-        if self.api_mode == "responses":
-            return True
-        if self.api_mode == "chat":
+        if self._responses_disabled:
             return False
-        base = (self.api_base or "").strip().lower()
-        parsed = urlparse(base if "://" in base else f"https://{base}")
-        host = (parsed.hostname or "").lower()
-        port = parsed.port
-        if host in {"api.openai.com", "api.x.ai"}:
-            return True
-        if port == 11434:
-            return True
-        return False
+        return should_use_responses(api_mode=self.api_mode, api_base=self.api_base)
 
     async def _call_api(
         self,
@@ -127,10 +134,15 @@ class OpenAIAPI:
                 messages, max_tokens, temperature, call_type
             )
         try:
-            response = await self._make_responses_request(
-                messages, max_tokens, temperature
+            response = await make_responses_request(
+                client=self.client,
+                semaphore=self._semaphore,
+                model=self.model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
-            text = self._extract_responses_text(response)
+            text = extract_responses_text(response)
             logger.debug(
                 f"OpenAI API {call_type} call succeeded; output length: {len(text)}"
             )
@@ -139,8 +151,7 @@ class OpenAIAPI:
             logger.error(f"API authentication failed: {e}")
             raise AuthenticationError(self._safe_error_message(e)) from e
         except (NotFoundError, BadRequestError) as e:
-            if self.api_mode != "auto":
-                raise
+            self._responses_disabled = True
             logger.warning(
                 f"Responses API unavailable; falling back to Chat Completions: {e}"
             )
@@ -170,10 +181,16 @@ class OpenAIAPI:
                 response_format=response_format,
             )
         try:
-            response = await self._make_responses_request(
-                messages, max_tokens, temperature, text_format=text_format
+            response = await make_responses_request(
+                client=self.client,
+                semaphore=self._semaphore,
+                model=self.model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                text_format=text_format,
             )
-            text = self._extract_responses_text(response)
+            text = extract_responses_text(response)
             logger.debug(
                 f"OpenAI API {call_type} call succeeded; output length: {len(text)}"
             )
@@ -181,108 +198,21 @@ class OpenAIAPI:
         except OpenAIAuthenticationError as e:
             logger.error(f"API authentication failed: {e}")
             raise AuthenticationError(self._safe_error_message(e)) from e
+        except (NotFoundError, BadRequestError) as e:
+            self._responses_disabled = True
+            logger.warning(
+                f"Responses API unavailable; falling back to Chat Completions: {e}"
+            )
+            return await self._call_api_common(
+                messages,
+                max_tokens,
+                temperature,
+                call_type,
+                response_format=response_format,
+            )
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Invalid API response format: {e}")
             raise ValueError(self._safe_error_message(e)) from e
-
-    async def _make_responses_request(
-        self,
-        messages: list[dict[str, Any]],
-        max_tokens: int | None,
-        temperature: float | None,
-        text_format: dict[str, Any] | None = None,
-    ):
-        async with self._semaphore:
-            kwargs: dict[str, Any] = {
-                "model": self.model,
-                "input": messages,
-                "temperature": temperature,
-            }
-            if max_tokens is not None:
-                kwargs["max_output_tokens"] = max_tokens
-            if text_format:
-                kwargs["text"] = {"format": text_format}
-            return await asyncio.wait_for(
-                self.client.responses.create(**kwargs),
-                timeout=REQUEST_TIMEOUT,
-            )
-
-    @staticmethod
-    def _extract_responses_text(response) -> str:
-        if isinstance((text := getattr(response, "output_text", None)), str) and text:
-            return text
-        parts = OpenAIAPI._collect_responses_output_text(
-            getattr(response, "output", None)
-        )
-        if not parts:
-            raise APIConnectionError("Empty output")
-        return "".join(parts)
-
-    @staticmethod
-    def _collect_responses_output_text(output: Any) -> list[str]:
-        if not isinstance(output, list):
-            raise APIConnectionError("Invalid output type")
-        return list(OpenAIAPI._iter_responses_output_text(output))
-
-    @staticmethod
-    def _iter_responses_output_text(output: list[Any]):
-        for item in output:
-            if getattr(item, "type", None) != "message":
-                continue
-            yield from OpenAIAPI._iter_responses_message_content(
-                getattr(item, "content", None)
-            )
-
-    @staticmethod
-    def _iter_responses_message_content(content: Any):
-        if not isinstance(content, list):
-            return
-        for c in content:
-            if (
-                getattr(c, "type", None) == "output_text"
-                and isinstance((t := getattr(c, "text", None)), str)
-                and t
-            ):
-                yield t
-
-    async def _make_api_request(
-        self,
-        messages: list[dict[str, Any]],
-        max_tokens: int | None,
-        temperature: float | None,
-        response_format: dict[str, Any] | None = None,
-    ):
-        async with self._semaphore:
-            kwargs: dict[str, Any] = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-            }
-            if max_tokens is not None:
-                api_base_host = urlparse(self.api_base).hostname
-                if api_base_host and (
-                    api_base_host == "openai.com"
-                    or api_base_host.endswith(".openai.com")
-                ):
-                    kwargs["max_completion_tokens"] = max_tokens
-                else:
-                    kwargs["max_tokens"] = max_tokens
-            if response_format:
-                kwargs["response_format"] = response_format
-            return await asyncio.wait_for(
-                self.client.chat.completions.create(**kwargs),
-                timeout=REQUEST_TIMEOUT,
-            )
-
-    @staticmethod
-    def _process_api_response(response, call_type: str) -> str:
-        generated_text = response.choices[0].message.content
-        if not generated_text:
-            raise APIConnectionError()
-        logger.debug(
-            f"OpenAI API {call_type} call succeeded; output length: {len(generated_text)}"
-        )
-        return generated_text
 
     async def __aenter__(self):
         return self
@@ -318,64 +248,6 @@ class OpenAIAPI:
             messages, max_tokens, temperature, "single-turn text"
         )
 
-    @staticmethod
-    def _coerce_json_substring(text: str) -> str | None:
-        s = text.strip()
-        if not s:
-            return None
-        for open_ch, close_ch in (("{", "}"), ("[", "]")):
-            i = s.find(open_ch)
-            j = s.rfind(close_ch)
-            if 0 <= i < j:
-                return s[i : j + 1]
-        return None
-
-    @staticmethod
-    def _parse_json(text: str) -> Any:
-        if not isinstance(text, str):
-            raise ValueError()
-        if (sub := OpenAIAPI._coerce_json_substring(text)) is None:
-            raise ValueError()
-        return json.loads(sub)
-
-    @staticmethod
-    def _validate_structured_output(
-        obj: Any,
-        *,
-        expected_type: type | tuple[type, ...] | None,
-        required_keys: tuple[str, ...] | None,
-    ) -> Any:
-        if expected_type is not None and not isinstance(obj, expected_type):
-            raise ValueError()
-        if required_keys:
-            if not isinstance(obj, dict):
-                raise ValueError()
-            missing = [k for k in required_keys if k not in obj]
-            if missing:
-                raise ValueError()
-        return obj
-
-    @staticmethod
-    def _build_structured_formats(
-        schema: dict[str, Any] | None,
-        *,
-        name: str,
-        strict: bool,
-    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-        if schema:
-            rf = {
-                "type": "json_schema",
-                "json_schema": {"name": name, "schema": schema, "strict": strict},
-            }
-            tf = {
-                "type": "json_schema",
-                "name": name,
-                "schema": schema,
-                "strict": strict,
-            }
-            return rf, tf
-        return {"type": "json_object"}, {"type": "json_object"}
-
     async def generate_structured(
         self,
         prompt: str,
@@ -392,7 +264,7 @@ class OpenAIAPI:
     ) -> Any:
         if max_attempts < 1:
             raise ValueError()
-        rf, tf = self._build_structured_formats(schema, name=name, strict=strict)
+        rf, tf = build_structured_formats(schema, name=name, strict=strict)
         messages = self._build_messages(prompt, system_prompt)
         last_text = ""
         for attempt in range(max_attempts):
@@ -412,8 +284,8 @@ class OpenAIAPI:
                 text_format=tf,
             )
             try:
-                obj = self._parse_json(last_text)
-                return self._validate_structured_output(
+                obj = parse_json(last_text)
+                return validate_structured_output(
                     obj, expected_type=expected_type, required_keys=required_keys
                 )
             except ValueError:
