@@ -91,7 +91,7 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
     def _setup_default_commands(self):
         if not self.commands:
             self.commands = {
-                "help": {"description": "帮助信息", "aliases": []},
+                "help": {"description": "可用命令", "aliases": []},
                 "status": {"description": "机器人状态", "aliases": []},
                 "sysinfo": {"description": "系统信息", "aliases": []},
                 "model": {
@@ -110,7 +110,7 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
                     "description": "响应聊天开关 (用法: chat on|off)",
                     "aliases": [],
                 },
-                "plugins": {"description": "插件列表", "aliases": []},
+                "plugins": {"description": "插件信息", "aliases": []},
                 "enable": {
                     "description": "启用插件 (用法: enable <插件名>)",
                     "aliases": [],
@@ -202,6 +202,21 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
             return cmd_lower
         return self._command_alias_index.get(cmd_lower)
 
+    def _get_command_title(self, command: str) -> str:
+        info = self.commands.get(command)
+        desc = info.get("description") if isinstance(info, dict) else None
+        if isinstance(desc, str) and (title := desc.strip()):
+            for sep in ("(", "（"):
+                if (idx := title.find(sep)) > 0:
+                    title = title[:idx].rstrip()
+                    break
+            return title
+        return f"^{command}"
+
+    def _format_command_output(self, title: str, text: str) -> str:
+        lines = text.splitlines() if (text or "").strip() else ["(空)"]
+        return self._format_code_block(title, lines)
+
     async def _execute_command(self, command: str, args: str = "") -> str:
         handler = self._command_handlers.get(command)
         if not handler:
@@ -243,7 +258,9 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
             if not user_id:
                 return None
             if not self._is_authorized(user_id, handle):
-                return self._create_response("您没有权限使用命令。")
+                return self._create_response(
+                    self._format_command_output("命令", "您没有权限使用命令。")
+                )
             command_text = text[1:].strip()
             parts = command_text.split(maxsplit=1)
             command_name = self._find_command(parts[0])
@@ -252,12 +269,21 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
                 who = handle or username
                 self._log_plugin_action("ran command", f"@{who}: ^{command_text}")
                 result = await self._execute_command(command_name, args)
-                return self._create_response(result)
+                return self._create_response(
+                    self._format_command_output(
+                        self._get_command_title(command_name), result
+                    )
+                )
             return self._create_response(
-                f"未知命令: {parts[0]}\n使用 ^help 查看可用命令。"
+                self._format_command_output(
+                    f"^{parts[0]}",
+                    f"未知命令: {parts[0]}\n使用 ^help 查看可用命令。",
+                )
             )
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
             logger.error(f"Error handling command: {e}")
-            return self._create_response("命令处理失败，请稍后重试。")
+            return self._create_response(
+                self._format_command_output("命令", "命令处理失败，请稍后重试。")
+            )

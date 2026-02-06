@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import json
 from typing import Any
 
@@ -17,6 +18,57 @@ _MSG_GLOBAL_CONFIG_NOT_INJECTED = "全局配置未注入"
 
 
 class CmdHandlersMixin:
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        total = int(max(0, seconds))
+        days, rem = divmod(total, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, seconds = divmod(rem, 60)
+        base = f"{hours:02}:{minutes:02}:{seconds:02}"
+        return f"{days}d {base}" if days else base
+
+    def _get_uptime_text(self, bot: Any) -> str | None:
+        runtime = getattr(bot, "runtime", None)
+        if runtime is None:
+            return None
+        started_at = getattr(runtime, "startup_time", None)
+        if not isinstance(started_at, datetime):
+            return None
+        seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
+        return self._format_duration(seconds)
+
+    def _get_feature_toggle_text(self) -> str:
+        cfg = getattr(self, "global_config", None)
+        cfg_get = cfg.get if cfg else (lambda k, d=None: d)
+        chat_on = "on" if bool(cfg_get(ConfigKeys.BOT_RESPONSE_CHAT)) else "off"
+        mention_on = "on" if bool(cfg_get(ConfigKeys.BOT_RESPONSE_MENTION)) else "off"
+        autopost_on = "on" if bool(cfg_get(ConfigKeys.BOT_AUTO_POST_ENABLED)) else "off"
+        return f"开关: chat={chat_on} mention={mention_on} autopost={autopost_on}"
+
+    def _get_plugin_status_text(self) -> str | None:
+        plugin_manager = getattr(self, "plugin_manager", None)
+        if plugin_manager is None or not hasattr(plugin_manager, "get_plugin_info"):
+            return None
+        plugins = plugin_manager.get_plugin_info()
+        if not plugins:
+            return None
+        plugin_enabled = sum(1 for p in plugins if p.get("enabled") is True)
+        return f"插件: {plugin_enabled}/{len(plugins)} 已启用"
+
+    @staticmethod
+    def _get_bot_account_text(bot: Any) -> str | None:
+        bot_username = getattr(bot, "bot_username", None)
+        if not bot_username:
+            return None
+        bot_user_id = getattr(bot, "bot_user_id", None)
+        suffix = f" ({bot_user_id})" if bot_user_id else ""
+        return f"Bot: @{bot_username}{suffix}"
+
+    @staticmethod
+    def _get_model_text(bot: Any) -> str | None:
+        model = getattr(getattr(bot, "openai", None), "model", None)
+        return f"模型: {model}" if model else None
+
     def _handle_set_bool(self, label: str, key: str, args: str) -> str:
         if not getattr(self, "global_config", None):
             return _MSG_GLOBAL_CONFIG_NOT_INJECTED
@@ -38,7 +90,7 @@ class CmdHandlersMixin:
         help_lines = []
         for left, desc in entries:
             help_lines.append(f"  {left.ljust(max_width)} - {desc}")
-        return self._format_code_block("可用命令", help_lines)
+        return "\n".join(help_lines)
 
     def _get_status_text(self) -> str:
         bot = getattr(self, "bot", None)
@@ -49,16 +101,16 @@ class CmdHandlersMixin:
         runtime_running = bool(getattr(getattr(bot, "runtime", None), "running", False))
         status = "运行中" if runtime_running else "未运行"
 
-        streaming = getattr(bot, "streaming", None)
-        streaming_state = getattr(streaming, "state", None)
-        ws = getattr(streaming, "ws_connection", None)
-        ws_open = bool(ws and not getattr(ws, "closed", True))
-
         parts = [f"机器人状态: {status}"]
-        if isinstance(streaming_state, str) and streaming_state:
-            parts.append(
-                f"Streaming: {streaming_state} ({'connected' if ws_open else 'disconnected'})"
-            )
+        if uptime := self._get_uptime_text(bot):
+            parts.append(f"运行时长: {uptime}")
+        if bot_account := self._get_bot_account_text(bot):
+            parts.append(bot_account)
+        if model := self._get_model_text(bot):
+            parts.append(model)
+        parts.append(self._get_feature_toggle_text())
+        if plugin_status := self._get_plugin_status_text():
+            parts.append(plugin_status)
         parts.append(f"授权用户数: {allowed_count}")
         return "\n".join(parts)
 
@@ -122,7 +174,7 @@ class CmdHandlersMixin:
         info_lines = []
         for name, desc, status in entries:
             info_lines.append(f"  {name.ljust(max_width)} - [{status}] {desc}")
-        return self._format_code_block("插件信息", info_lines)
+        return "\n".join(info_lines)
 
     async def _toggle_plugin(self, plugin_name: str, enable: bool) -> str:
         if not plugin_name.strip():
@@ -235,8 +287,14 @@ class CmdHandlersMixin:
             body = ["(空)"]
         return "\n".join([t, "```", *body, "```"])
 
-    def _format_user_list(self, label: str, items: list[str]) -> str:
-        return self._format_code_block(label, items if items else ["(空)"])
+    @staticmethod
+    def _format_plain_list(items: list[str]) -> str:
+        return "\n".join(items) if items else "(空)"
+
+    @staticmethod
+    def _format_plain_list_update(message: str, items: list[str]) -> str:
+        body = [message, "", *(items if items else ["(空)"])]
+        return "\n".join(body)
 
     async def _apply_saved_response_user_list(self, key: str) -> None:
         if not getattr(self, "db", None):
@@ -274,18 +332,18 @@ class CmdHandlersMixin:
         raw = args.strip()
         current = normalize_tokens(self.global_config.get(key), lower=True)
         if not raw:
-            return self._format_user_list(label, current)
+            return self._format_plain_list(current)
         parts = raw.split(maxsplit=1)
         action = parts[0].lower()
         rest = parts[1] if len(parts) > 1 else ""
         if action in {"list", "status", "show"}:
-            return self._format_user_list(label, current)
+            return self._format_plain_list(current)
         if action in {"clear", "empty"}:
             await self._save_response_user_list(key, [])
-            return f"已清空 {label}\n" + self._format_user_list(label, [])
+            return self._format_plain_list_update(f"已清空 {label}", [])
         if action in {"reset", "default"}:
             await self._reset_response_user_list(key, baseline)
-            return f"已恢复 {label}\n" + self._format_user_list(label, list(baseline))
+            return self._format_plain_list_update(f"已恢复 {label}", list(baseline))
         if action in {"add", "+", "append"}:
             items = normalize_tokens(rest, lower=True)
             if not items:
@@ -293,18 +351,18 @@ class CmdHandlersMixin:
             s = set(current)
             updated = current + [i for i in items if i not in s]
             await self._save_response_user_list(key, updated)
-            return f"已更新 {label}\n" + self._format_user_list(label, updated)
+            return self._format_plain_list_update(f"已更新 {label}", updated)
         if action in {"del", "remove", "-"}:
             items = set(normalize_tokens(rest, lower=True))
             if not items:
                 return f"用法: ^{label} del <username@host|userId>"
             updated = [i for i in current if i not in items]
             await self._save_response_user_list(key, updated)
-            return f"已更新 {label}\n" + self._format_user_list(label, updated)
+            return self._format_plain_list_update(f"已更新 {label}", updated)
         if action in {"set", "="}:
             items = normalize_tokens(rest, lower=True)
             await self._save_response_user_list(key, items)
-            return f"已更新 {label}\n" + self._format_user_list(label, items)
+            return self._format_plain_list_update(f"已更新 {label}", items)
         return (
             f"用法: ^{label} [list|add|del|set|clear|reset]\n"
             f"示例: ^{label} add admin@example.com user-id-123\n"
