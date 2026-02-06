@@ -68,6 +68,22 @@ class _StreamingSocketMixin:
         async with self._ws_lock:
             if self._ws_available:
                 return
+            task = getattr(self, "_connect_task", None)
+            if task is None or task.done():
+                task = asyncio.create_task(
+                    self._connect_websocket_inner(),
+                    name="stream-ws-connect",
+                )
+                setattr(self, "_connect_task", task)
+        try:
+            await task
+        finally:
+            if task.done():
+                async with self._ws_lock:
+                    if getattr(self, "_connect_task", None) is task:
+                        setattr(self, "_connect_task", None)
+
+    async def _connect_websocket_inner(self) -> None:
         raw = self.instance_url.strip().rstrip("/")
         if "://" not in raw:
             raw = f"https://{raw}"
@@ -83,7 +99,15 @@ class _StreamingSocketMixin:
         ws_url = f"{base_ws_url}/streaming?{qs}"
         safe_url = f"{base_ws_url}/streaming"
         try:
-            self.ws_connection = await self.transport.ws_connect(ws_url)
+            ws = await self.transport.ws_connect(ws_url)
+            async with self._ws_lock:
+                if self._ws_available:
+                    try:
+                        await ws.close()
+                    except Exception:
+                        pass
+                    return
+                self.ws_connection = ws
             logger.debug(f"WebSocket connected: {safe_url}")
         except (aiohttp.ClientError, OSError) as e:
             await self._cleanup_failed_connection()

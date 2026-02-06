@@ -60,6 +60,8 @@ class StreamingClient(_StreamingSocketMixin, _StreamingEventsMixin):
         self._send_buffer: deque[dict[str, Any]] = deque()
         self._ws_lock = asyncio.Lock()
         self._send_lock = asyncio.Lock()
+        self._lifecycle_lock = asyncio.Lock()
+        self._connect_task: asyncio.Task[None] | None = None
 
     async def __aenter__(self):
         return self
@@ -127,14 +129,15 @@ class StreamingClient(_StreamingSocketMixin, _StreamingEventsMixin):
                     retry_delay = min(retry_delay * 2, 30.0)
 
     async def disconnect(self) -> None:
-        self.should_reconnect = False
-        self.running = False
-        self._cancel_chat_channel_tasks()
-        await self._disconnect_all_channels()
-        await self._close_websocket()
-        self.processed_events.clear()
-        self._send_buffer.clear()
-        self.state = "disconnected"
+        async with self._lifecycle_lock:
+            self.should_reconnect = False
+            self.running = False
+            self._cancel_chat_channel_tasks()
+            await self._disconnect_all_channels()
+            await self._close_websocket()
+            self.processed_events.clear()
+            self._send_buffer.clear()
+            self.state = "disconnected"
 
     async def connect_channel(
         self, channel: ChannelType | str, params: dict[str, Any] | None = None
@@ -238,30 +241,33 @@ class StreamingClient(_StreamingSocketMixin, _StreamingEventsMixin):
         return None
 
     async def connect_once(self, channels: list[ChannelSpec] | None = None) -> None:
-        if self.running:
-            return
-        self.running = True
-        self._ensure_workers_started()
-        requested = self._normalize_channel_specs(channels)
-        if not any(self._channel_name(s) == ChannelType.MAIN.value for s in requested):
-            requested.insert(0, ChannelType.MAIN.value)
-        for spec in requested:
-            channel = self._channel_name(spec)
-            params = spec[1] if isinstance(spec, tuple) else None
+        async with self._lifecycle_lock:
+            if self.running:
+                return
+            self.running = True
+            self._ensure_workers_started()
+            requested = self._normalize_channel_specs(channels)
+            if not any(
+                self._channel_name(s) == ChannelType.MAIN.value for s in requested
+            ):
+                requested.insert(0, ChannelType.MAIN.value)
+            for spec in requested:
+                channel = self._channel_name(spec)
+                params = spec[1] if isinstance(spec, tuple) else None
+                try:
+                    await self.connect_channel(ChannelType(channel), params)
+                except ValueError:
+                    await self.connect_channel(channel, params)
             try:
-                await self.connect_channel(ChannelType(channel), params)
-            except ValueError:
-                await self.connect_channel(channel, params)
-        try:
-            await self._connect_websocket()
-            await self._resubscribe_channels()
-            await self._flush_send_buffer()
-            self.state = "connected"
-        except WebSocketConnectionError:
-            self.state = "reconnecting"
-        if self._first_connection:
-            logger.info("Streaming client started")
-            self._first_connection = False
+                await self._connect_websocket()
+                await self._resubscribe_channels()
+                await self._flush_send_buffer()
+                self.state = "connected"
+            except WebSocketConnectionError:
+                self.state = "reconnecting"
+            if self._first_connection:
+                logger.info("Streaming client started")
+                self._first_connection = False
 
     async def _resubscribe_channels(self) -> None:
         for channel_id, info in self.channels.items():
