@@ -107,11 +107,11 @@ log:
 ```bash
 pip install -e .
 
-twipsybot up        # 启动
-twipsybot status    # 状态
-twipsybot down      # 关闭
-twipsybot restart   # 重启
-twipsybot help      # 帮助
+twipsybot up         # 启动
+twipsybot status     # 状态
+twipsybot down       # 关闭
+twipsybot restart    # 重启
+twipsybot help       # 帮助
 ```
 
 > 作为服务（可选）
