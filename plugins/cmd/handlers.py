@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
@@ -34,7 +34,7 @@ class CmdHandlersMixin:
         started_at = getattr(runtime, "startup_time", None)
         if not isinstance(started_at, datetime):
             return None
-        seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
+        seconds = (datetime.now(UTC) - started_at).total_seconds()
         return self._format_duration(seconds)
 
     def _get_feature_toggle_text(self) -> str:
@@ -227,7 +227,7 @@ class CmdHandlersMixin:
                 info_lines.append(f"  {table} {size_str} ({row_count} recs)")
             return "\n".join(info_lines)
         except aiosqlite.Error as e:
-            return f"获取数据库统计失败: {str(e)}"
+            return f"获取数据库统计失败: {e!s}"
 
     async def _clear_plugin_data(self, args: str) -> str:
         if not args.strip():
@@ -249,7 +249,7 @@ class CmdHandlersMixin:
                 else "未找到指定插件数据"
             )
         except aiosqlite.Error as e:
-            return f"删除数据失败: {str(e)}"
+            return f"删除数据失败: {e!s}"
 
     async def _handle_model(self, args: str) -> str:
         arg = args.strip()

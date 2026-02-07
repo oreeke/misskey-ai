@@ -5,13 +5,19 @@ import openai
 from loguru import logger
 from openai import (
     APIConnectionError as OpenAIConnectionError,
+)
+from openai import (
     APIError as OpenAIError,
+)
+from openai import (
     APITimeoutError,
-    AuthenticationError as OpenAIAuthenticationError,
     BadRequestError,
     NotFoundError,
     RateLimitError,
     Timeout,
+)
+from openai import (
+    AuthenticationError as OpenAIAuthenticationError,
 )
 
 from ...shared.constants import (

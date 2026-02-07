@@ -9,7 +9,7 @@ from loguru import logger
 from ..shared.config import Config
 from ..shared.config_keys import ConfigKeys
 
-__all__ = ("DBManager", "ConnectionPool")
+__all__ = ("ConnectionPool", "DBManager")
 
 
 class ConnectionPool:

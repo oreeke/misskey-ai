@@ -103,7 +103,7 @@ class WeatherPlugin(PluginBase):
             session = self.session
             if session is None or session.closed:
                 return None
-            session = cast(aiohttp.ClientSession, session)
+            session = cast("aiohttp.ClientSession", session)
             coordinates = await self._get_coordinates(city)
             if not coordinates:
                 return f"抱歉，找不到城市 '{city}' 的位置信息。"
@@ -134,7 +134,7 @@ class WeatherPlugin(PluginBase):
             session = self.session
             if session is None or session.closed:
                 return None
-            session = cast(aiohttp.ClientSession, session)
+            session = cast("aiohttp.ClientSession", session)
             params = {"q": city, "limit": 1, "appid": self.api_key}
             async with session.get(self.geocoding_url, params=params) as response:
                 if response.status != 200:

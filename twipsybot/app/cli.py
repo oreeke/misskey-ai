@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import psutil
 
@@ -46,8 +47,9 @@ def _print_help() -> None:
         "Usage: twipsybot <command>\n\n"
         "Commands:\n"
         "  up      Run bot\n"
-        "  down    Stop bot\n"
         "  status  Show runtime status\n"
+        "  down    Stop bot\n"
+        "  restart Restart bot\n"
         "  help    Show help"
     )
     print(help_text, file=sys.stdout)
@@ -60,7 +62,7 @@ def _should_daemonize() -> bool:
 
 
 def _spawn_detached(argv: list[str], *, env: dict[str, str]) -> subprocess.Popen:
-    kwargs: dict[str, object] = {
+    kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
@@ -98,7 +100,7 @@ def _run_up_daemon(pid_file: Path) -> int:
     deadline = time.time() + 5.0
     while time.time() < deadline:
         pid = _read_pid(pid_file)
-        if pid == proc.pid and psutil.pid_exists(pid):
+        if pid is not None and pid == proc.pid and psutil.pid_exists(pid):
             return 0
         time.sleep(0.05)
     print("failed to start twipsybot", file=sys.stderr)
@@ -116,7 +118,26 @@ def _cmd_up() -> int:
         _remove_pid_file(pid_file)
 
     if _should_daemonize():
-        return _run_up_daemon(pid_file)
+        code = _run_up_daemon(pid_file)
+        if code == 0:
+            pid = _read_pid(pid_file)
+            pid_text = str(pid) if pid is not None else "unknown"
+            print(
+                f"twipsybot started (pid={pid_text})\n"
+                f"pid_file={pid_file}\n"
+                "next:\n"
+                "  twipsybot status    watch\n"
+                "  twipsybot down      stop\n"
+                "  twipsybot restart   restart",
+                file=sys.stdout,
+            )
+        return code
+    print(
+        f"twipsybot running (pid={os.getpid()})\n"
+        f"pid_file={pid_file}\n"
+        "press Ctrl+C to stop",
+        file=sys.stdout,
+    )
     return _run_up_foreground(pid_file)
 
 
@@ -140,13 +161,41 @@ def _cmd_down() -> int:
         except psutil.TimeoutExpired:
             proc.kill()
         _remove_pid_file(pid_file)
+        print(f"twipsybot stopped (pid={pid})", file=sys.stdout)
         return 0
     except psutil.NoSuchProcess:
         _remove_pid_file(pid_file)
+        print("twipsybot stopped", file=sys.stdout)
         return 0
     except Exception as e:
         print(f"failed to stop twipsybot: {e}", file=sys.stderr)
         return 1
+
+
+def _cmd_restart() -> int:
+    pid_file = _pid_file_path()
+    print("twipsybot restarting...", file=sys.stdout)
+    if pid_file.exists():
+        pid = _read_pid(pid_file)
+        if pid and psutil.pid_exists(pid):
+            print(f"stopping twipsybot (pid={pid})...", file=sys.stdout)
+            try:
+                proc = psutil.Process(pid)
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except psutil.TimeoutExpired:
+                    proc.kill()
+            except psutil.NoSuchProcess:
+                pass
+            except Exception as e:
+                print(f"failed to stop twipsybot: {e}", file=sys.stderr)
+                return 1
+            print(f"twipsybot stopped (pid={pid})", file=sys.stdout)
+        _remove_pid_file(pid_file)
+    else:
+        print("twipsybot is not running; starting...", file=sys.stdout)
+    return _cmd_up()
 
 
 def _format_duration(seconds: float) -> str:
@@ -222,6 +271,8 @@ def _dispatch(argv: list[str]) -> int:
         return _cmd_up()
     if cmd == "down":
         return _cmd_down()
+    if cmd == "restart":
+        return _cmd_restart()
     if cmd == "status":
         return _cmd_status()
 

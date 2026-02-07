@@ -1,13 +1,19 @@
 import asyncio
 import inspect
-from typing import Any
+from typing import Any, TypedDict
 
 from loguru import logger
 
 from ..shared.utils import extract_user_handle, extract_user_id, extract_username
 from .context import PluginContext
 
-__all__ = ("PluginBase",)
+__all__ = ("PluginBase", "PluginHookResult")
+
+
+class PluginHookResult(TypedDict, total=False):
+    handled: bool
+    plugin_name: str
+    response: str
 
 
 class PluginBase:

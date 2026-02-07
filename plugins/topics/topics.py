@@ -184,7 +184,7 @@ class TopicsPlugin(PluginBase):
             start_idx = 0
 
         timeout = aiohttp.ClientTimeout(total=60)
-        headers = {"User-Agent": "twipsy-rss"}
+        headers = {"User-Agent": "Twipsy-RSS"}
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             for step in range(len(urls)):
                 feed_idx = (start_idx + step) % len(urls)
@@ -219,7 +219,7 @@ class TopicsPlugin(PluginBase):
 
     async def _fetch_all_rss_candidates(self, urls: list[str]) -> list[dict[str, Any]]:
         timeout = aiohttp.ClientTimeout(total=60)
-        headers = {"User-Agent": "twipsybot TopicsPlugin/rss"}
+        headers = {"User-Agent": "Twipsy-RSS"}
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             tasks = [
                 self._fetch_rss_candidates(session, url, feed_idx=i)

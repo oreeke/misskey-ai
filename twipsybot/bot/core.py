@@ -2,7 +2,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
@@ -10,11 +10,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from cachetools import TTLCache
 from loguru import logger
 
-from ..clients.misskey.misskey_api import MisskeyAPI
-from ..clients.openai import OpenAIAPI
 from ..clients.misskey.channels import ChannelSpec, ChannelType
+from ..clients.misskey.misskey_api import MisskeyAPI
 from ..clients.misskey.streaming import StreamingClient
 from ..clients.misskey.transport import TCPClient
+from ..clients.openai import OpenAIAPI
+from ..db.sqlite import DBManager
+from ..plugin.manager import PluginManager
 from ..shared.config import Config
 from ..shared.config_keys import ConfigKeys
 from ..shared.constants import (
@@ -27,8 +29,6 @@ from ..shared.constants import (
 )
 from ..shared.exceptions import ConfigurationError
 from ..shared.utils import get_memory_usage, normalize_tokens
-from ..db.sqlite import DBManager
-from ..plugin.manager import PluginManager
 from .handlers import BotHandlers
 from .runtime import BotRuntime
 
@@ -415,22 +415,28 @@ class MisskeyBot:
         user_id: str | None = None,
         room_id: str | None = None,
     ) -> list[dict[str, str]]:
-        limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+        config_limit = self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+        limit_value = limit if isinstance(limit, int) else config_limit
+        if not isinstance(limit_value, int):
+            limit_value = 0
         if (cached := self._chat_histories.get(conversation_id)) is not None:
-            return list(cached)[-max(0, limit * 2) :]
+            return list(cached)[-max(0, limit_value * 2) :]
         if conversation_id.startswith("room:"):
             room_id = room_id or conversation_id.removeprefix("room:")
         history = await self.handlers.chat.get_chat_history(
-            user_id=user_id, room_id=room_id, limit=limit
+            user_id=user_id, room_id=room_id, limit=limit_value
         )
-        trimmed = history[-max(0, limit * 2) :]
+        trimmed = history[-max(0, limit_value * 2) :]
         self._chat_histories[conversation_id] = trimmed
         return list(trimmed)
 
     def append_chat_turn(
         self, user_id: str, user_text: str, assistant_text: str, limit: int | None
     ) -> None:
-        limit = limit or self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+        config_limit = self.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+        limit_value = limit if isinstance(limit, int) else config_limit
+        if not isinstance(limit_value, int):
+            limit_value = 0
         history = list(self._chat_histories.get(user_id) or [])
         last = next(reversed(history), None)
         if user_text and not (
@@ -446,7 +452,7 @@ class MisskeyBot:
             and last.get("content") == assistant_text
         ):
             history.append({"role": "assistant", "content": assistant_text})
-        self._chat_histories[user_id] = history[-max(0, limit * 2) :]
+        self._chat_histories[user_id] = history[-max(0, limit_value * 2) :]
 
     async def __aenter__(self):
         await self.start()
@@ -498,7 +504,7 @@ class MisskeyBot:
             self.handlers.on_auto_post,
             "interval",
             minutes=interval_minutes,
-            next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
+            next_run_time=datetime.now(UTC) + timedelta(minutes=1),
             id="auto_post",
             replace_existing=True,
         )

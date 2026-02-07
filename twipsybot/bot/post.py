@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -15,14 +13,14 @@ if TYPE_CHECKING:
 class AutoPostService:
     _PLUGIN_POST_INTERVAL_SECONDS = 10
 
-    def __init__(self, bot: MisskeyBot):
+    def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
         self.posts_today = 0
         self.last_auto_post_time = bot.runtime.startup_time
 
     def post_count(self) -> None:
         self.posts_today += 1
-        self.last_auto_post_time = datetime.now(timezone.utc)
+        self.last_auto_post_time = datetime.now(UTC)
 
     def check_post_counter(self, max_posts: int) -> bool:
         if self.posts_today >= max_posts:
@@ -151,9 +149,7 @@ class AutoPostService:
     ) -> str:
         if not prompt:
             raise ValueError("Missing prompt")
-        timestamp_min = timestamp_override or int(
-            datetime.now(timezone.utc).timestamp() // 60
-        )
+        timestamp_min = timestamp_override or int(datetime.now(UTC).timestamp() // 60)
         full_prompt = f"[{timestamp_min}] {plugin_prompt}{prompt}"
         return await self.bot.openai.generate_text(
             full_prompt, system_prompt, **self.bot.ai_config

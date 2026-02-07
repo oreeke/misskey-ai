@@ -1,16 +1,16 @@
-from __future__ import annotations
-
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
+from ..plugin.base import PluginHookResult
 from ..shared.config_keys import ConfigKeys
 from ..shared.utils import extract_user_handle, extract_user_id, extract_username
 
 if TYPE_CHECKING:
+    from ..plugin.base import PluginHookResult
     from .core import MisskeyBot
 
 
@@ -24,7 +24,7 @@ class MentionContext:
 
 
 class MentionHandler:
-    def __init__(self, bot: MisskeyBot):
+    def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
 
     def _is_self_mention(self, mention: MentionContext) -> bool:
@@ -164,7 +164,7 @@ class MentionHandler:
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            logger.error(f"Error handling mention: {e}")
+            logger.exception("Error handling mention")
 
     def _parse(self, note: dict[str, Any]) -> MentionContext:
         try:
@@ -204,8 +204,8 @@ class MentionHandler:
                     )
                 note_id = None
             return MentionContext(note_id, reply_target_id, text, user_id, username)
-        except Exception as e:
-            logger.error(f"Failed to parse message data: {e}")
+        except Exception:
+            logger.exception("Failed to parse message data")
             return MentionContext(None, None, "", None, None)
 
     def _mentions_bot(self, note_data: dict[str, Any]) -> bool:
@@ -224,14 +224,14 @@ class MentionHandler:
     ) -> bool:
         plugin_results = await self.bot.plugin_manager.on_mention(note)
         for result in plugin_results:
-            if not (result and result.get("handled")):
+            if not (isinstance(result, dict) and result.get("handled")):
                 continue
-            await self._apply_plugin_result(result, mention)
+            await self._apply_plugin_result(cast(PluginHookResult, result), mention)
             return True
         return False
 
     async def _apply_plugin_result(
-        self, result: dict[str, Any], mention: MentionContext
+        self, result: PluginHookResult, mention: MentionContext
     ) -> None:
         logger.debug(f"Mention handled by plugin: {result.get('plugin_name')}")
         response = result.get("response")

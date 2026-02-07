@@ -1,5 +1,5 @@
-from .base import PluginBase
+from .base import PluginBase, PluginHookResult
 from .context import PluginContext
 from .manager import PluginManager
 
-__all__ = ("PluginBase", "PluginContext", "PluginManager")
+__all__ = ("PluginBase", "PluginHookResult", "PluginContext", "PluginManager")

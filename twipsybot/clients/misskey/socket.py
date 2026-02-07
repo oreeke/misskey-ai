@@ -74,14 +74,14 @@ class _StreamingSocketMixin:
                     self._connect_websocket_inner(),
                     name="stream-ws-connect",
                 )
-                setattr(self, "_connect_task", task)
+                self._connect_task = task
         try:
             await task
         finally:
             if task.done():
                 async with self._ws_lock:
                     if getattr(self, "_connect_task", None) is task:
-                        setattr(self, "_connect_task", None)
+                        self._connect_task = None
 
     async def _connect_websocket_inner(self) -> None:
         raw = self.instance_url.strip().rstrip("/")

@@ -105,10 +105,12 @@ log:
 </details>
 
 ```bash
-pip install -e .
+pip install -e .    # 安装依赖
+
 twipsybot up        # 启动
 twipsybot status    # 状态
 twipsybot down      # 关闭
+twipsybot restart   # 重启
 twipsybot help      # 帮助
 ```
 

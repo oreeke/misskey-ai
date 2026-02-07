@@ -27,9 +27,9 @@ CHAT_CHANNELS = frozenset({ChannelType.CHAT_USER.value})
 
 
 __all__ = (
+    "CHAT_CHANNELS",
+    "NOTE_CHANNELS",
+    "TIMELINE_CHANNELS",
     "ChannelSpec",
     "ChannelType",
-    "TIMELINE_CHANNELS",
-    "NOTE_CHANNELS",
-    "CHAT_CHANNELS",
 )

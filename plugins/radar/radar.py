@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 from typing import Any
 
 from loguru import logger
 
-from twipsybot.plugin import PluginBase
 from twipsybot.clients.misskey.channels import ChannelType
+from twipsybot.plugin import PluginBase
 from twipsybot.shared.config_keys import ConfigKeys
 
 
@@ -294,7 +292,7 @@ class RadarPlugin(PluginBase):
             else:
                 await self._act(note_data, note_id, channel)
         except Exception as e:
-            logger.error(f"Radar interaction failed: {repr(e)}")
+            logger.error(f"Radar interaction failed: {e!r}")
         return None
 
     async def _maybe_react(
@@ -306,7 +304,7 @@ class RadarPlugin(PluginBase):
             await self.misskey.create_reaction(note_id, self.reaction)
             self._log_plugin_action("reacted", f"{note_id} {self.reaction} [{channel}]")
         except Exception as e:
-            logger.error(f"Radar reaction failed: {repr(e)}")
+            logger.error(f"Radar reaction failed: {e!r}")
 
     async def _build_reply_text(self, note_data: dict[str, Any]) -> str | None:
         if self.reply_text:
@@ -318,7 +316,7 @@ class RadarPlugin(PluginBase):
         try:
             return await self._generate_ai_reply(note_data)
         except Exception as e:
-            logger.error(f"Radar AI reply failed: {repr(e)}")
+            logger.error(f"Radar AI reply failed: {e!r}")
             return None
 
     async def _maybe_reply(
@@ -334,7 +332,7 @@ class RadarPlugin(PluginBase):
             )
             self._log_plugin_action("replied", f"{note_id} [{channel}]")
         except Exception as e:
-            logger.error(f"Radar reply failed: {repr(e)}")
+            logger.error(f"Radar reply failed: {e!r}")
 
     async def _build_quote_text(self, note_data: dict[str, Any]) -> str | None:
         if self.quote_text:
@@ -346,7 +344,7 @@ class RadarPlugin(PluginBase):
         try:
             return await self._generate_ai_quote(note_data)
         except Exception as e:
-            logger.error(f"Radar AI quote failed: {repr(e)}")
+            logger.error(f"Radar AI quote failed: {e!r}")
             return None
 
     async def _maybe_quote(
@@ -368,7 +366,7 @@ class RadarPlugin(PluginBase):
             )
             return True
         except Exception as e:
-            logger.error(f"Radar quote failed: {repr(e)}")
+            logger.error(f"Radar quote failed: {e!r}")
             return False
 
     async def _maybe_renote(self, note_id: str, channel: str) -> None:
@@ -384,7 +382,7 @@ class RadarPlugin(PluginBase):
                 "renoted", f"{note_id} {self.renote_visibility or ''} [{channel}]"
             )
         except Exception as e:
-            logger.error(f"Radar renote failed: {repr(e)}")
+            logger.error(f"Radar renote failed: {e!r}")
 
     async def _act(self, note_data: dict[str, Any], note_id: str, channel: str) -> None:
         await self._maybe_react(note_data, note_id, channel)

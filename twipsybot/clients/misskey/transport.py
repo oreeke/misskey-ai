@@ -14,7 +14,7 @@ class TCPClient:
     def __init__(self) -> None:
         self.__session: aiohttp.ClientSession | None = None
         self.__connector: aiohttp.TCPConnector | None = None
-        self.user_agent = "MisskeyBot/1.0"
+        self.user_agent = "TwipsyBot"
         self._default_headers = {
             "User-Agent": self.user_agent,
         }
@@ -60,4 +60,4 @@ class TCPClient:
             return await self.session.ws_connect(url)
         except aiohttp.ClientConnectorError as e:
             logger.error(f"TCP client connection failed: {e}")
-            raise ClientConnectorError()
+            raise ClientConnectorError() from e

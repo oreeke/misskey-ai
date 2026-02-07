@@ -104,7 +104,7 @@ class MisskeyAPI:
             return msg
         return s
 
-    async def _process_response(self, response, endpoint: str):
+    async def _process_response(self, response, endpoint: str) -> Any:
         if response.status in (HTTP_OK, HTTP_NO_CONTENT):
             if response.status == HTTP_NO_CONTENT:
                 logger.debug(f"Misskey API request succeeded: {endpoint}")
@@ -117,7 +117,7 @@ class MisskeyAPI:
                 if not await response.read():
                     logger.debug(f"Misskey API request succeeded: {endpoint}")
                     return {}
-                raise APIConnectionError()
+                raise APIConnectionError() from None
         error_text = self._format_error_text(await response.text())
         status = response.status
         if status == HTTP_BAD_REQUEST:
@@ -138,12 +138,12 @@ class MisskeyAPI:
     )
     async def make_request(
         self, endpoint: str, data: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    ) -> Any:
         return await self._make_request_once(endpoint, data)
 
     async def _make_request_once(
         self, endpoint: str, data: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    ) -> Any:
         url = f"{self.instance_url}/api/{endpoint}"
         payload = {"i": self.access_token}
         if data:
@@ -167,7 +167,7 @@ class MisskeyAPI:
         self,
         endpoint: str,
         build_form: Callable[[], tuple[aiohttp.FormData, list[Any]]],
-    ) -> dict[str, Any]:
+    ) -> Any:
         url = f"{self.instance_url}/api/{endpoint}"
         resources: list[Any] = []
         try:
@@ -222,7 +222,7 @@ class MisskeyAPI:
             )
         if visibility is None:
             visibility = "public"
-        data = {"text": text, "visibility": visibility}
+        data: dict[str, Any] = {"text": text, "visibility": visibility}
         if resolved_reply_id:
             data["replyId"] = resolved_reply_id
         if local_only:

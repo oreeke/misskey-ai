@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from .chat import ChatHandler
@@ -12,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class BotHandlers:
-    def __init__(self, bot: MisskeyBot):
+    def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
         self.mention = MentionHandler(bot)
         self.chat = ChatHandler(bot)

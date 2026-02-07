@@ -228,7 +228,7 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
             if isinstance(e, asyncio.CancelledError):
                 raise
             logger.error(f"Error executing command {command}: {e}")
-            return f"命令执行失败: {str(e)}"
+            return f"命令执行失败: {e!s}"
 
     def _create_response(self, response_text: str) -> dict[str, Any] | None:
         try:

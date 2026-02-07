@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import json
 from dataclasses import dataclass
@@ -30,7 +28,7 @@ class _ChatContext:
 
 
 class ChatHandler:
-    def __init__(self, bot: MisskeyBot):
+    def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
 
     def _is_bot_mentioned(self, text: str) -> bool:
@@ -224,7 +222,7 @@ class ChatHandler:
         mention_to: str | None,
         room_id: str | None,
     ) -> bool:
-        if not (result and result.get("handled")):
+        if not (isinstance(result, dict) and result.get("handled")):
             return False
         logger.debug(f"Chat handled by plugin: {result.get('plugin_name')}")
         response = result.get("response")
@@ -290,16 +288,19 @@ class ChatHandler:
         limit: int | None = None,
     ) -> list[dict[str, str]]:
         try:
-            limit = limit or self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+            config_limit = self.bot.config.get(ConfigKeys.BOT_RESPONSE_CHAT_MEMORY)
+            limit_value = limit if isinstance(limit, int) else config_limit
+            if not isinstance(limit_value, int):
+                limit_value = 0
             if room_id:
-                return await self._get_room_chat_history(room_id, limit)
+                return await self._get_room_chat_history(room_id, limit_value)
             if user_id:
-                return await self._get_user_chat_history(user_id, limit)
+                return await self._get_user_chat_history(user_id, limit_value)
             return []
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            logger.error(f"Error getting chat history: {e}")
+            logger.exception("Error getting chat history")
             return []
 
     async def _get_room_chat_history(

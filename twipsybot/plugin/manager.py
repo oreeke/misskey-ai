@@ -222,21 +222,19 @@ class PluginManager:
     async def on_startup(self) -> None:
         await self.call_plugin_hook("on_startup")
 
-    async def on_mention(self, mention_data: dict[str, Any]) -> list[dict[str, Any]]:
+    async def on_mention(self, mention_data: dict[str, Any]) -> list[Any]:
         return await self.call_plugin_hook("on_mention", mention_data)
 
-    async def on_message(self, message_data: dict[str, Any]) -> list[dict[str, Any]]:
+    async def on_message(self, message_data: dict[str, Any]) -> list[Any]:
         return await self.call_plugin_hook("on_message", message_data)
 
-    async def on_notification(
-        self, notification_data: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    async def on_notification(self, notification_data: dict[str, Any]) -> list[Any]:
         return await self.call_plugin_hook("on_notification", notification_data)
 
-    async def on_timeline_note(self, note_data: dict[str, Any]) -> list[dict[str, Any]]:
+    async def on_timeline_note(self, note_data: dict[str, Any]) -> list[Any]:
         return await self.call_plugin_hook("on_timeline_note", note_data)
 
-    async def on_auto_post(self) -> list[dict[str, Any]]:
+    async def on_auto_post(self) -> list[Any]:
         return await self.call_plugin_hook("on_auto_post")
 
     async def on_shutdown(self) -> None:

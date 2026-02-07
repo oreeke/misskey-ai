@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import json
 from typing import TYPE_CHECKING, Any
@@ -13,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class NotificationHandler:
-    def __init__(self, bot: MisskeyBot):
+    def __init__(self, bot: "MisskeyBot"):
         self.bot = bot
 
     async def handle(self, notification: dict[str, Any]) -> None:
@@ -27,4 +25,4 @@ class NotificationHandler:
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            logger.error(f"Error handling notification event: {e}")
+            logger.exception("Error handling notification event")

@@ -40,7 +40,7 @@ class VisionPlugin(PluginBase):
                 direct_url, max_bytes=self.max_bytes
             )
         except Exception as e:
-            logger.error(f"Vision failed to download image: {repr(e)}")
+            logger.error(f"Vision failed to download image: {e!r}")
             return None
 
     async def _ensure_image_mime(self, fid: str, mime: str | None) -> str | None:
@@ -49,7 +49,7 @@ class VisionPlugin(PluginBase):
         try:
             info = await self.drive.show_file(fid)
         except Exception as e:
-            logger.error(f"Vision failed to read file info: {repr(e)}")
+            logger.error(f"Vision failed to read file info: {e!r}")
             return None
         return self._normalize_image_mime(info.get("type"))
 
@@ -59,7 +59,7 @@ class VisionPlugin(PluginBase):
                 fid, thumbnail=self.use_thumbnail, max_bytes=self.max_bytes
             )
         except Exception as e:
-            logger.error(f"Vision failed to download image: {repr(e)}")
+            logger.error(f"Vision failed to download image: {e!r}")
             return None
 
     @staticmethod

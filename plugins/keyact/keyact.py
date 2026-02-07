@@ -7,7 +7,6 @@ from loguru import logger
 
 from twipsybot.plugin import PluginBase
 
-
 _MENTION_TOKEN_RE = re.compile(r"@[\w.@-]+\s*")
 
 

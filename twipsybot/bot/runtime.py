@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import asyncio
-from datetime import datetime, timezone
 from collections.abc import Coroutine
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -14,12 +12,12 @@ __all__ = ("BotRuntime",)
 class BotRuntime:
     def __init__(
         self,
-        bot: MisskeyBot,
+        bot: "MisskeyBot",
         loop: asyncio.AbstractEventLoop | None = None,
     ):
         self.bot = bot
         self.loop = loop or asyncio.get_running_loop()
-        self.startup_time = datetime.now(timezone.utc)
+        self.startup_time = datetime.now(UTC)
         self.running = False
         self.tasks: dict[str, asyncio.Task[Any]] = {}
 
