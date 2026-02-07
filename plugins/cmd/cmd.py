@@ -6,7 +6,7 @@ from loguru import logger
 
 from twipsybot.plugin import PluginBase
 from twipsybot.shared.config_keys import ConfigKeys
-from twipsybot.shared.utils import normalize_tokens
+from twipsybot.shared.utils import get_first_truthy, normalize_tokens
 
 from .handlers import CmdHandlersMixin
 
@@ -224,26 +224,14 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
         try:
             result = handler(args)
             return await result if asyncio.iscoroutine(result) else result
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Error executing command {command}: {e}")
             return f"命令执行失败: {e!s}"
 
-    def _create_response(self, response_text: str) -> dict[str, Any] | None:
-        try:
-            response = {
-                "handled": True,
-                "plugin_name": self.name,
-                "response": response_text,
-            }
-            return response if self._validate_plugin_response(response) else None
-        except Exception as e:
-            logger.error(f"Error creating response: {e}")
-            return None
-
     async def on_message(self, message_data: dict[str, Any]) -> dict[str, Any] | None:
-        raw = message_data.get("text") or message_data.get("content") or ""
+        raw = get_first_truthy(message_data, "text", "content", default="")
         if not isinstance(raw, str):
             return None
         text = raw.strip()
@@ -258,7 +246,7 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
             if not user_id:
                 return None
             if not self._is_authorized(user_id, handle):
-                return self._create_response(
+                return self.handled(
                     self._format_command_output("命令", "您没有权限使用命令。")
                 )
             command_text = text[1:].strip()
@@ -269,21 +257,21 @@ class CmdPlugin(CmdHandlersMixin, PluginBase):
                 who = handle or username
                 self._log_plugin_action("ran command", f"@{who}: ^{command_text}")
                 result = await self._execute_command(command_name, args)
-                return self._create_response(
+                return self.handled(
                     self._format_command_output(
                         self._get_command_title(command_name), result
                     )
                 )
-            return self._create_response(
+            return self.handled(
                 self._format_command_output(
                     f"^{parts[0]}",
                     f"未知命令: {parts[0]}\n使用 ^help 查看可用命令。",
                 )
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Error handling command: {e}")
-            return self._create_response(
+            return self.handled(
                 self._format_command_output("命令", "命令处理失败，请稍后重试。")
             )

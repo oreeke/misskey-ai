@@ -5,6 +5,7 @@ from loguru import logger
 from twipsybot.clients.misskey.channels import ChannelType
 from twipsybot.plugin import PluginBase
 from twipsybot.shared.config_keys import ConfigKeys
+from twipsybot.shared.utils import normalize_tokens
 
 
 class RadarPlugin(PluginBase):
@@ -88,17 +89,7 @@ class RadarPlugin(PluginBase):
         return self._dedupe(selectors)
 
     def _get_selectors_from_config(self, bot) -> list[str]:
-        raw = bot.config.get(ConfigKeys.BOT_TIMELINE_ANTENNA_IDS)
-        if raw is None or isinstance(raw, bool):
-            return []
-        if isinstance(raw, str):
-            tokens = [t.strip() for t in raw.replace(",", " ").split() if t.strip()]
-            return self._dedupe(tokens)
-        if isinstance(raw, list):
-            tokens = [str(v).strip() for v in raw if v is not None and str(v).strip()]
-            return self._dedupe(tokens)
-        s = str(raw).strip()
-        return [s] if s else []
+        return normalize_tokens(bot.config.get(ConfigKeys.BOT_TIMELINE_ANTENNA_IDS))
 
     async def _get_antenna_name_map(self) -> dict[str, str]:
         misskey = getattr(self, "misskey", None)
@@ -211,12 +202,13 @@ class RadarPlugin(PluginBase):
         return "\n".join(p for p in parts if p).strip()
 
     def _should_skip_self(self, note: dict[str, Any], variants: set[str]) -> bool:
-        if not self.skip_self or not hasattr(self, "bot"):
+        bot = getattr(self, "bot", None)
+        if not self.skip_self or not bot:
             return False
-        bot_id = getattr(self.bot, "bot_user_id", None)
+        bot_id = getattr(bot, "bot_user_id", None)
         if bot_id and note.get("userId") == bot_id:
             return True
-        bot_name = getattr(self.bot, "bot_username", None)
+        bot_name = getattr(bot, "bot_username", None)
         return isinstance(bot_name, str) and bot_name and bot_name.lower() in variants
 
     @staticmethod
@@ -231,7 +223,8 @@ class RadarPlugin(PluginBase):
         return template.replace("{username}", username)
 
     async def _generate_ai_reply(self, note: dict[str, Any]) -> str | None:
-        if not hasattr(self, "openai") or not (content := self._effective_text(note)):
+        openai = getattr(self, "openai", None)
+        if not openai or not (content := self._effective_text(note)):
             return None
         prompt = (self.reply_ai_prompt or self.DEFAULT_REPLY_AI_PROMPT).format(
             content=content
@@ -239,7 +232,7 @@ class RadarPlugin(PluginBase):
         system_prompt = (
             self.global_config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "") or ""
         ).strip()
-        reply = await self.openai.generate_text(
+        reply = await openai.generate_text(
             prompt,
             system_prompt or None,
             max_tokens=self.global_config.get(ConfigKeys.OPENAI_MAX_TOKENS),
@@ -248,7 +241,8 @@ class RadarPlugin(PluginBase):
         return reply.strip() or None
 
     async def _generate_ai_quote(self, note: dict[str, Any]) -> str | None:
-        if not hasattr(self, "openai") or not (content := self._effective_text(note)):
+        openai = getattr(self, "openai", None)
+        if not openai or not (content := self._effective_text(note)):
             return None
         prompt = (self.quote_ai_prompt or self.DEFAULT_QUOTE_AI_PROMPT).format(
             content=content
@@ -256,7 +250,7 @@ class RadarPlugin(PluginBase):
         system_prompt = (
             self.global_config.get(ConfigKeys.BOT_SYSTEM_PROMPT, "") or ""
         ).strip()
-        reply = await self.openai.generate_text(
+        reply = await openai.generate_text(
             prompt,
             system_prompt or None,
             max_tokens=self.global_config.get(ConfigKeys.OPENAI_MAX_TOKENS),
@@ -267,7 +261,7 @@ class RadarPlugin(PluginBase):
     async def on_timeline_note(
         self, note_data: dict[str, Any]
     ) -> dict[str, Any] | None:
-        if not hasattr(self, "misskey"):
+        if not getattr(self, "misskey", None):
             return None
         channel = note_data.get("streamingChannel")
         if not isinstance(channel, str) or channel != ChannelType.ANTENNA.value:
@@ -283,9 +277,10 @@ class RadarPlugin(PluginBase):
             or "unknown"
         )
         try:
+            bot = getattr(self, "bot", None)
             lock_ctx = None
-            if hasattr(self, "bot"):
-                lock_ctx = self.bot.lock_actor(note_data.get("userId"), username)
+            if bot:
+                lock_ctx = bot.lock_actor(note_data.get("userId"), username)
             if lock_ctx:
                 async with lock_ctx:
                     await self._act(note_data, note_id, channel)

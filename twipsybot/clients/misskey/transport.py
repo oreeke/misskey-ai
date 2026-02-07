@@ -40,16 +40,16 @@ class TCPClient:
         if self.__session and not self.__session.closed:
             try:
                 await self.__session.close()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                if isinstance(e, asyncio.CancelledError):
-                    raise
                 logger.warning(f"Error closing session: {e}")
         if self.__connector and not self.__connector.closed:
             try:
                 await self.__connector.close()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                if isinstance(e, asyncio.CancelledError):
-                    raise
                 logger.warning(f"Error closing connector: {e}")
         self.__session = self.__connector = None
         if not silent:

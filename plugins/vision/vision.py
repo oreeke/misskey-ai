@@ -6,6 +6,7 @@ from loguru import logger
 
 from twipsybot.plugin import PluginBase
 from twipsybot.shared.config_keys import ConfigKeys
+from twipsybot.shared.utils import get_first_truthy
 
 
 class VisionPlugin(PluginBase):
@@ -33,12 +34,11 @@ class VisionPlugin(PluginBase):
         )
 
     async def _try_fetch_bytes_by_url(self, direct_url: str | None) -> bytes | None:
-        if not direct_url or not hasattr(self, "misskey"):
+        misskey = getattr(self, "misskey", None)
+        if not direct_url or not misskey:
             return None
         try:
-            return await self.misskey.drive.fetch_bytes(
-                direct_url, max_bytes=self.max_bytes
-            )
+            return await misskey.drive.fetch_bytes(direct_url, max_bytes=self.max_bytes)
         except Exception as e:
             logger.error(f"Vision failed to download image: {e!r}")
             return None
@@ -113,29 +113,20 @@ class VisionPlugin(PluginBase):
         if not (parts := await self._build_user_content(mention_data, kind="mention")):
             return None
         reply = await self._call_vision(parts, call_type="mention image")
-        return self._create_response(reply)
+        return self.handled(reply)
 
     async def on_message(self, message_data: dict[str, Any]) -> dict[str, Any] | None:
         if not (parts := await self._build_user_content(message_data, kind="chat")):
             return None
         reply = await self._call_vision(parts, call_type="chat image")
-        return self._create_response(reply)
-
-    def _create_response(self, response_text: str) -> dict[str, Any] | None:
-        response = {
-            "handled": True,
-            "plugin_name": self.name,
-            "response": response_text,
-        }
-        return response if self._validate_plugin_response(response) else None
+        return self.handled(reply)
 
     @staticmethod
     def _extract_text(data: dict[str, Any], *, kind: str) -> str:
         data = VisionPlugin._normalize_payload(data, kind=kind)
         if kind == "chat":
-            return (
-                data.get("text") or data.get("content") or data.get("body") or ""
-            ).strip()
+            raw = get_first_truthy(data, "text", "content", "body", default="")
+            return raw.strip() if isinstance(raw, str) else ""
         parts: list[str] = []
         for v in (data.get("cw"), data.get("text") or data.get("body")):
             if isinstance(v, str) and (s := v.strip()):
@@ -175,7 +166,7 @@ class VisionPlugin(PluginBase):
     async def _build_user_content(
         self, data: dict[str, Any], *, kind: str
     ) -> list[dict[str, Any]]:
-        if not hasattr(self, "drive") or not hasattr(self, "openai"):
+        if not getattr(self, "drive", None) or not getattr(self, "openai", None):
             return []
         text = self._extract_text(data, kind=kind)
         files = self._extract_files(data, kind=kind)[: self.max_images]

@@ -105,6 +105,9 @@ class PluginBase:
             if k in response
         )
 
+    def handled(self, response: str) -> PluginHookResult:
+        return {"handled": True, "plugin_name": self.name, "response": response}
+
     def _register_resource(self, resource: Any, cleanup_method: str = "close") -> None:
         self._resources_to_cleanup.append((resource, cleanup_method))
 
@@ -117,8 +120,8 @@ class PluginBase:
                         await method()
                     else:
                         method()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                if isinstance(e, asyncio.CancelledError):
-                    raise
                 logger.error(f"Plugin {self.name} resource cleanup failed: {e}")
         self._resources_to_cleanup.clear()

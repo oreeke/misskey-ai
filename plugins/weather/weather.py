@@ -37,29 +37,14 @@ class WeatherPlugin(PluginBase):
         self._log_plugin_action("initialized")
         return True
 
-    async def cleanup(self) -> None:
-        await super().cleanup()
-
     async def on_mention(self, data: dict[str, Any]) -> dict[str, Any] | None:
-        try:
-            note_data = (
-                data.get("note", data) if "note" in data and "type" in data else data
-            )
-            return await self._process_weather_message(note_data)
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
-            logger.error(f"Weather plugin error handling mention: {e}")
-            return None
+        note_data = (
+            data.get("note", data) if "note" in data and "type" in data else data
+        )
+        return await self._process_weather_message(note_data)
 
     async def on_message(self, message_data: dict[str, Any]) -> dict[str, Any] | None:
-        try:
-            return await self._process_weather_message(message_data)
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
-            logger.error(f"Weather plugin error handling message: {e}")
-            return None
+        return await self._process_weather_message(message_data)
 
     async def _process_weather_message(
         self, data: dict[str, Any]
@@ -79,24 +64,12 @@ class WeatherPlugin(PluginBase):
     ) -> dict[str, Any] | None:
         location = location_match.group("loc").strip() if location_match else ""
         if not location:
-            return {
-                "handled": True,
-                "plugin_name": self.name,
-                "response": "请指定要查询的城市，例如：北京天气 或 天气上海",
-            }
+            return self.handled("请指定要查询的城市，例如：北京天气 或 天气上海")
         self._log_plugin_action(
             "handling weather request", f"from @{username}: {location}"
         )
         weather_info = await self._get_weather(location)
-        response = {
-            "handled": True,
-            "plugin_name": self.name,
-            "response": weather_info or f"抱歉，无法获取 {location} 的天气信息。",
-        }
-        if self._validate_plugin_response(response):
-            return response
-        logger.error("Weather plugin response validation failed")
-        return None
+        return self.handled(weather_info or f"抱歉，无法获取 {location} 的天气信息。")
 
     async def _get_weather(self, city: str) -> str | None:
         try:
@@ -123,9 +96,9 @@ class WeatherPlugin(PluginBase):
                     f"Weather API v2.5 request failed: status={response.status}"
                 )
                 return "抱歉，天气服务暂时不可用。"
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Failed to fetch weather data: {e}")
             return "抱歉，获取天气信息时出现错误。"
 
@@ -150,9 +123,9 @@ class WeatherPlugin(PluginBase):
                 if "country" in location:
                     display_name += f", {location['country']}"
                 return float(location["lat"]), float(location["lon"]), display_name
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Failed to fetch city coordinates: {e}")
             return None
 

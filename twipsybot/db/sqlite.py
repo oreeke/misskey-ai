@@ -251,9 +251,9 @@ class DBManager:
         try:
             await conn.execute("VACUUM")
             logger.debug("Database vacuum completed")
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Database vacuum failed: {e}")
         finally:
             await self._pool.return_connection(conn)

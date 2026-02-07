@@ -44,9 +44,9 @@ class AutoPostService:
             if await self._try_plugin_post(plugin_results, max_posts, local_only):
                 return
             await self._generate_ai_post(plugin_results, max_posts, local_only)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Error during auto-post: {e}")
 
     async def _try_plugin_post(

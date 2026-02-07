@@ -22,7 +22,7 @@ class NotificationHandler:
             )
         try:
             await self.bot.plugin_manager.on_notification(notification)
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
+        except asyncio.CancelledError:
+            raise
+        except Exception:
             logger.exception("Error handling notification event")

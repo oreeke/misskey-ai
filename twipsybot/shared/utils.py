@@ -16,6 +16,7 @@ __all__ = (
     "extract_user_handle",
     "extract_user_id",
     "extract_username",
+    "get_first_truthy",
     "get_memory_usage",
     "get_system_info",
     "normalize_tokens",
@@ -87,6 +88,13 @@ def normalize_tokens(value: Any, *, lower: bool = False) -> list[str]:
         seen.add(k)
         out.append(k if lower else t)
     return out
+
+
+def get_first_truthy(data: dict[str, Any], *keys: str, default: Any = "") -> Any:
+    for key in keys:
+        if value := data.get(key):
+            return value
+    return default
 
 
 def extract_user_id(message: dict[str, Any]) -> str | None:

@@ -202,9 +202,9 @@ class PluginManager:
                     plugin._initialized = False
                     continue
                 plugin._initialized = True
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                if isinstance(e, asyncio.CancelledError):
-                    raise
                 logger.exception(f"Error initializing plugin {plugin.name}: {e}")
                 plugin.set_enabled(False)
                 plugin._initialized = False
@@ -214,9 +214,9 @@ class PluginManager:
             if plugin.enabled:
                 try:
                     await plugin.cleanup()
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
-                    if isinstance(e, asyncio.CancelledError):
-                        raise
                     logger.exception(f"Error cleaning up plugin {plugin.name}: {e}")
 
     async def on_startup(self) -> None:
@@ -262,9 +262,9 @@ class PluginManager:
                         and result.get("handled") is True
                     ):
                         break
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                if isinstance(e, asyncio.CancelledError):
-                    raise
                 logger.exception(
                     f"Unhandled exception in plugin {plugin.name} hook {hook_name}: {e}"
                 )
@@ -325,9 +325,9 @@ class PluginManager:
         try:
             await plugin.cleanup()
             plugin._initialized = False
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.exception(f"Error cleaning up plugin {plugin.name}: {e}")
 
     @staticmethod
@@ -351,9 +351,9 @@ class PluginManager:
                 await on_startup()
             plugin._initialized = True
             return True
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.exception(f"Error initializing plugin {plugin.name}: {e}")
             plugin.set_enabled(False)
             plugin._initialized = False

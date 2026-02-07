@@ -171,9 +171,9 @@ class _StreamingEventsMixin:
             channel_name, event_data = item
             try:
                 await self._dispatch_event(channel_name, event_data)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                if isinstance(e, asyncio.CancelledError):
-                    raise
                 logger.exception(f"Failed to process event: {e}")
 
     async def _dispatch_event(
@@ -312,9 +312,9 @@ class _StreamingEventsMixin:
             channel_id = await self.connect_channel(
                 ChannelType.CHAT_USER, {"otherId": other_id}
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.debug(f"Failed to connect chatUser channel for {other_id}: {e}")
             return None
         self._chat_user_channel_ids[other_id] = channel_id
@@ -333,9 +333,9 @@ class _StreamingEventsMixin:
         try:
             await asyncio.sleep(120)
             await self.disconnect_channel_id(channel_id)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.debug(f"Failed to disconnect chatUser channel {channel_id}: {e}")
         finally:
             if self._chat_user_channel_ids.get(other_id) == channel_id:
@@ -399,9 +399,9 @@ class _StreamingEventsMixin:
                     await handler(data)
                 else:
                     handler(data)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                if isinstance(e, asyncio.CancelledError):
-                    raise
                 logger.exception(f"Event handler failed ({event_type}): {e}")
 
     def _is_duplicate_event(self, event_id: str | None, event_type: str | None) -> bool:

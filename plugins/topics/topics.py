@@ -57,14 +57,11 @@ class TopicsPlugin(PluginBase):
                     "initialized", f"Custom topics: {len(self.topics)}"
                 )
             return True
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Topics plugin initialization failed: {e}")
             return False
-
-    async def cleanup(self) -> None:
-        await super().cleanup()
 
     async def on_auto_post(self) -> dict[str, Any] | None:
         try:
@@ -82,9 +79,9 @@ class TopicsPlugin(PluginBase):
                 "plugin_prompt": self.txt_ai_prefix.format(topic=topic),
                 "plugin_name": self.name,
             }
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.error(f"Topics plugin auto-post hook failed: {e}")
             return None
 
@@ -108,9 +105,9 @@ class TopicsPlugin(PluginBase):
                 await self.db.set_plugin_data(
                     "Topics", "last_used_line", str(initial_index)
                 )
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Topics plugin DB initialization failed: {e}")
             raise
 
@@ -122,9 +119,9 @@ class TopicsPlugin(PluginBase):
             last_feed_idx = await self.db.get_plugin_data("Topics", "rss_last_feed_idx")
             if last_feed_idx is None:
                 await self.db.set_plugin_data("Topics", "rss_last_feed_idx", "0")
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Topics plugin RSS DB initialization failed: {e}")
             raise
 
@@ -409,9 +406,9 @@ class TopicsPlugin(PluginBase):
             return title
         try:
             text = await openai.generate_text(prompt, system_prompt, **ai_config)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"RSS title rewrite failed: {e}")
             return title
         first_line = (text or "").strip().splitlines()[0:1]
@@ -426,27 +423,27 @@ class TopicsPlugin(PluginBase):
             if not isinstance(obj, list):
                 return []
             return [x for x in obj if isinstance(x, str) and x]
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Failed to load rss_recent_keys: {e}")
             return []
 
     async def _set_recent_rss_keys(self, keys: list[str]) -> None:
         try:
             await self.db.set_plugin_data("Topics", "rss_recent_keys", json.dumps(keys))
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Failed to save rss_recent_keys: {e}")
 
     async def _get_last_rss_feed_idx(self) -> int:
         try:
             raw = await self.db.get_plugin_data("Topics", "rss_last_feed_idx")
             return max(0, int(raw)) if raw else 0
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Failed to load rss_last_feed_idx: {e}")
             return 0
 
@@ -455,9 +452,9 @@ class TopicsPlugin(PluginBase):
             await self.db.set_plugin_data(
                 "Topics", "rss_last_feed_idx", str(max(0, idx))
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Failed to save rss_last_feed_idx: {e}")
 
     @staticmethod
@@ -480,9 +477,9 @@ class TopicsPlugin(PluginBase):
             await self._update_last_used_line((index + 1) % len(self.topics))
             self._log_plugin_action("selected topic", f"{topic} (line: {index + 1})")
             return topic
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Failed to get next topic: {e}")
             return fallback
 
@@ -490,16 +487,16 @@ class TopicsPlugin(PluginBase):
         try:
             result = await self.db.get_plugin_data("Topics", "last_used_line")
             return max(0, int(result)) if result else 0
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Failed to get last used line: {e}")
             return 0
 
     async def _update_last_used_line(self, line_number: int) -> None:
         try:
             await self.db.set_plugin_data("Topics", "last_used_line", str(line_number))
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
             logger.warning(f"Failed to update last used line: {e}")

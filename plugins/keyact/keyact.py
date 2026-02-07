@@ -1,11 +1,9 @@
-import asyncio
 import re
 from dataclasses import dataclass
 from typing import Any
 
-from loguru import logger
-
 from twipsybot.plugin import PluginBase
+from twipsybot.shared.utils import get_first_truthy
 
 _MENTION_TOKEN_RE = re.compile(r"@[\w.@-]+\s*")
 
@@ -44,7 +42,7 @@ class KeyActPlugin(PluginBase):
 
     def _get_text(self, data: dict[str, Any], *, kind: str) -> str:
         data = self._normalize_payload(data, kind=kind)
-        text = data.get("text") or data.get("content") or data.get("body") or ""
+        text = get_first_truthy(data, "text", "content", "body", default="")
         return text.strip() if isinstance(text, str) else ""
 
     def _clean_text(self, text: str, *, case_sensitive: bool) -> str:
@@ -95,14 +93,6 @@ class KeyActPlugin(PluginBase):
                 return True
         return False
 
-    def _create_response(self, response_text: str) -> dict[str, Any] | None:
-        response = {
-            "handled": True,
-            "plugin_name": self.name,
-            "response": response_text,
-        }
-        return response if self._validate_plugin_response(response) else None
-
     def _handle(self, data: dict[str, Any], *, kind: str) -> dict[str, Any] | None:
         if not self.rules:
             return None
@@ -117,25 +107,15 @@ class KeyActPlugin(PluginBase):
             if not text_clean:
                 continue
             if self._match_rule(rule, text_clean=text_clean):
-                return self._create_response(rule.response)
+                return self.handled(rule.response)
         return None
 
     async def on_mention(self, mention_data: dict[str, Any]) -> dict[str, Any] | None:
         if not self.mention_enabled:
             return None
-        try:
-            await asyncio.sleep(0)
-            return self._handle(mention_data, kind="mention")
-        except Exception as e:
-            logger.exception(f"KeyAct plugin exception while handling mention: {e}")
-            return None
+        return self._handle(mention_data, kind="mention")
 
     async def on_message(self, message_data: dict[str, Any]) -> dict[str, Any] | None:
         if not self.chat_enabled:
             return None
-        try:
-            await asyncio.sleep(0)
-            return self._handle(message_data, kind="chat")
-        except Exception as e:
-            logger.exception(f"KeyAct plugin exception while handling message: {e}")
-            return None
+        return self._handle(message_data, kind="chat")

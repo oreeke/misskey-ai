@@ -1,16 +1,14 @@
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from ..plugin.base import PluginHookResult
 from ..shared.config_keys import ConfigKeys
 from ..shared.utils import extract_user_handle, extract_user_id, extract_username
 
 if TYPE_CHECKING:
-    from ..plugin.base import PluginHookResult
     from .core import MisskeyBot
 
 
@@ -49,18 +47,6 @@ class MentionHandler:
             text=self._format_mention_reply(mention, text),
             reply_id=mention.reply_target_id,
         )
-
-    async def _maybe_send_blocked_reply(self, mention: MentionContext) -> bool:
-        if not mention.user_id:
-            return False
-        blocked = await self.bot.get_response_block_reply(
-            user_id=mention.user_id, handle=mention.username
-        )
-        if not blocked:
-            return False
-        await self._send_mention_reply(mention, blocked)
-        await self.bot.record_response(mention.user_id, count_turn=False)
-        return True
 
     def _should_handle_note(
         self,
@@ -151,19 +137,44 @@ class MentionHandler:
         ):
             return
         try:
-            async with self.bot.lock_actor(mention.user_id, mention.username):
-                display = mention.username or "unknown"
+            display = mention.username or "unknown"
+
+            async def send_reply(text: str) -> None:
+                await self._send_mention_reply(mention, text)
+
+            def log_plugin_sent(text: str) -> None:
+                formatted = self._format_mention_reply(mention, text)
+                logger.info(
+                    f"Plugin replied to @{display}: {self.bot.format_log_text(formatted)}"
+                )
+
+            def log_ai_sent(text: str) -> None:
+                formatted = self._format_mention_reply(mention, text)
+                logger.info(
+                    f"Replied to @{display}: {self.bot.format_log_text(formatted)}"
+                )
+
+            def log_incoming() -> None:
                 logger.info(
                     f"Mention received from @{display}: {self.bot.format_log_text(mention.text)}"
                 )
-                if await self._maybe_send_blocked_reply(mention):
-                    return
-                if await self._try_plugin_response(mention, note):
-                    return
-                await self._generate_ai_response(mention, note)
-        except Exception as e:
-            if isinstance(e, asyncio.CancelledError):
-                raise
+
+            await self.bot.run_response_pipeline(
+                actor_id=mention.user_id,
+                actor_name=mention.username,
+                user_id=mention.user_id,
+                handle=mention.username,
+                log_incoming=log_incoming,
+                send_reply=send_reply,
+                plugin_call=lambda: self.bot.plugin_manager.on_mention(note),
+                plugin_kind="Mention",
+                plugin_log_sent=log_plugin_sent,
+                ai_generate=lambda: self._generate_ai_reply(mention, note),
+                ai_log_sent=log_ai_sent,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
             logger.exception("Error handling mention")
 
     def _parse(self, note: dict[str, Any]) -> MentionContext:
@@ -219,47 +230,10 @@ class MentionHandler:
             text and self.bot.bot_username and f"@{self.bot.bot_username}" in text
         )
 
-    async def _try_plugin_response(
+    async def _generate_ai_reply(
         self, mention: MentionContext, note: dict[str, Any]
-    ) -> bool:
-        plugin_results = await self.bot.plugin_manager.on_mention(note)
-        for result in plugin_results:
-            if not (isinstance(result, dict) and result.get("handled")):
-                continue
-            await self._apply_plugin_result(cast(PluginHookResult, result), mention)
-            return True
-        return False
-
-    async def _apply_plugin_result(
-        self, result: PluginHookResult, mention: MentionContext
-    ) -> None:
-        logger.debug(f"Mention handled by plugin: {result.get('plugin_name')}")
-        response = result.get("response")
-        if response:
-            formatted = self._format_mention_reply(mention, response)
-            await self.bot.misskey.create_note(
-                text=formatted, reply_id=mention.reply_target_id
-            )
-            logger.info(
-                f"Plugin replied to @{mention.username or 'unknown'}: {self.bot.format_log_text(formatted)}"
-            )
-            if mention.user_id:
-                await self.bot.record_response(mention.user_id, count_turn=True)
-
-    async def _generate_ai_response(
-        self, mention: MentionContext, note: dict[str, Any]
-    ) -> None:
+    ) -> str:
         prompt = await self._build_mention_prompt(mention, note)
-        reply = await self.bot.openai.generate_text(
+        return await self.bot.openai.generate_text(
             prompt, self.bot.system_prompt, **self.bot.ai_config
         )
-        logger.debug("Mention reply generated")
-        formatted = f"@{mention.username}\n{reply}" if mention.username else reply
-        await self.bot.misskey.create_note(
-            text=formatted, reply_id=mention.reply_target_id
-        )
-        logger.info(
-            f"Replied to @{mention.username or 'unknown'}: {self.bot.format_log_text(formatted)}"
-        )
-        if mention.user_id:
-            await self.bot.record_response(mention.user_id, count_turn=True)
