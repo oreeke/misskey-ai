@@ -24,7 +24,6 @@
 - 📡 订阅天线，对感兴趣的帖子自动反应、回复、转发、引用（[Radar](./plugins/radar)）
 - 👁️ 接入多模态模型时，支持视觉理解（[Vision](./plugins/vision)）
 - 🥏 自定义关键词和期望回复，绕过 AI（[KeyAct](./plugins/keyact)）
-- 🧠 自定义 AI 系统提示（性格）、发帖提示、回帖提示、引用提示等
 
 ## 开始
 
